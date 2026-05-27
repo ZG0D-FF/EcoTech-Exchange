@@ -1,42 +1,46 @@
 import sqlite3
 
-def init_db():
-    conn = sqlite3.connect('ecotech.db')
+def init_shard(db_name: str):
+    conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
-    
-    # Create a Users table with ULID, Sync metadata, and password_hash
+
+    # Users Table (Using TEXT for ULIDs)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_deleted BOOLEAN DEFAULT 0
-        )
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        region TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT 0
+    )
     ''')
-    
-    # Create an Equipment table with ULID and Sync metadata
+
+    # Equipment Table (Using TEXT for ULIDs)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS equipment (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            description TEXT,
-            category TEXT NOT NULL, 
-            price REAL, 
-            rental_price_per_day REAL,
-            is_for_sale BOOLEAN NOT NULL,
-            condition TEXT NOT NULL, 
-            seller_id TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_deleted BOOLEAN DEFAULT 0,
-            FOREIGN KEY(seller_id) REFERENCES users(id)
-        )
+    CREATE TABLE IF NOT EXISTS equipment (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        price REAL,
+        rental_price_per_day REAL,
+        is_for_sale BOOLEAN NOT NULL,
+        condition TEXT,
+        seller_id TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT 0,
+        FOREIGN KEY (seller_id) REFERENCES users (id)
+    )
     ''')
-    
+
     conn.commit()
     conn.close()
-    print("Database initialized successfully! ecotech.db file created with distributed sync and Auth architecture.")
+    print(f"[{db_name}] Shard initialized successfully!")
 
 if __name__ == "__main__":
-    init_db()
+    print("Initializing Logical Sharding Architecture...")
+    init_shard('ecotech_north.db')
+    init_shard('ecotech_south.db')
+    print("All shards are ready.")
