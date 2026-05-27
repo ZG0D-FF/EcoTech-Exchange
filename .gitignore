@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+env/
+
+# Database files
+*.db
+ecotech.db
+
+# IDEs
+.vscode/
+.idea/
