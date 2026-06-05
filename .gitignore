@@ -1,0 +1,26 @@
+# Python / Virtual Environments
+__pycache__/
+*.pyc
+venv/
+env/
+.env
+
+# Node.js (Frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.npm/
+frontend/.pnpm-store/
+
+# Local Databases (Do not commit real user data)
+*.db
+*.sqlite3
+
+# Orchestrator Binaries & Logs
+bin/
+logs/
+nginx_cache/
+./nginx_cache/
+
+# OS Files
+.DS_Store
+Thumbs.db
