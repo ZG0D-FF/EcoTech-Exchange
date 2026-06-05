@@ -1,4 +1,4 @@
-# 🌍 EcoTech Exchange
+# 🌍 EcoTech Exchange (A Full STACK experiment)
 
 **EcoTech Exchange** is a scalable, distributed marketplace designed to address the $712B circular economy. It enables hardware enthusiasts and ECE students to rent out expensive tech equipment (oscilloscopes, 3D printers) or sell upcycled electronic components to prevent e-waste.
 
