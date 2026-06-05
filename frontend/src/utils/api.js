@@ -28,11 +28,11 @@ export const api = {
       body: JSON.stringify(data)
     }).then(r => r.json()),
 
-  googleLogin: (token) =>
+  googleLogin: (token, region) =>
     fetch(`${BASE_URL}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
+      body: JSON.stringify({ token, region })
     }).then(r => r.json()),
 
   getEquipment: () =>
