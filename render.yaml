@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: ecotech-backend
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: APP_ENV
+        value: "production"
+      - key: NORTH_DB_URL
+        sync: false
+      - key: SOUTH_DB_URL
+        sync: false
+      - key: EAST_DB_URL
+        sync: false
+      - key: WEST_DB_URL
+        sync: false
+    healthCheckPath: "/equipment"
