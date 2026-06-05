@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 pydantic
-sqlite3
+
 ulid-py
 bcrypt
 PyJWT

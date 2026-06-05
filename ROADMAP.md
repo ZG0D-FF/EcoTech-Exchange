@@ -56,7 +56,7 @@ We are building this project using the **RESHADED** System Design approach:
 - [ ] **Action:** Integrate a basic ML model in Python to auto-categorize hardware or suggest compatible microcontrollers.
 - [ ] **Action:** Setup Upstash Redis for semantic exact-match caching for AI operations.
 - [ ] **Action:** Write Dockerfiles and `docker-compose.yml`.
-- [ ] **Action:** Deploy Frontend to Vercel (Edge Network) and Backend to Railway (Auto-scaling server instances), configured purely via environment variables.
+- [ ] **Action:** Deploy Frontend to Vercel (Edge Network) and Backend to Render (Auto-scaling server instances), configured purely via environment variables.
 - [x] ~~**Action:** Kubernetes Orchestration~~ *(Scrapped in favor of Serverless Edge deployments or simple VPS to reduce cost/complexity)*
 
 ### Phase 6: Advanced Enterprise Security & Zero-Trust Architecture (Completed)
@@ -89,8 +89,8 @@ We are building this project using the **RESHADED** System Design approach:
   - *Purpose*: A framework for controlling AI agents on the EcoTech platform.
   - *Benefits*: Helps us manage AI operations directly on the site for categorization and compatibility checks, ensuring AI works securely within our guidelines.
 
-### Phase 8: Lightweight Container Orchestrator (Mini-Docker & Mini-K8s)
-*This phase will build a custom, highly optimized orchestrator natively in Python to avoid the massive RAM footprint of Docker Desktop on local machines.*
-- [ ] **Action:** Build a "Mini-Docker" Process Manager to isolate and run Nginx, FastAPI, and Vite processes natively using Python `subprocess`.
-- [ ] **Action:** Build a "Mini-K8s" Orchestrator that monitors the health of the Python backend shards and auto-restarts failed nodes.
-- [ ] **Action:** Deploy the EcoTech ecosystem via this lightweight orchestrator.
+### Phase 8: Lightweight Container Orchestrator (Completed)
+*This phase built a custom, highly optimized orchestrator natively in Python to avoid the massive RAM footprint of Docker Desktop, while setting up the exact configuration needed for Cloud Deployment.*
+- [x] **Action:** Built a "Mini-Docker" Process Manager (`orchestrator.py`) to isolate and run Nginx, FastAPI shards, and Vite natively using advanced `@dataclass` configs.
+- [x] **Action:** Built a "Mini-K8s" Control Plane that monitors shard health, uses exponential backoff to restart failed nodes, and hot-patches Nginx dynamically on eviction.
+- [x] **Action:** Wrote Production Parity Configuration (`vercel.json`, `Procfile`, `.env.example`) to allow the codebase to automatically deploy to Serverless Edge and Cloud instances with zero codebase changes.
