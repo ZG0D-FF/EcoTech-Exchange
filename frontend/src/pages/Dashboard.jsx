@@ -126,7 +126,7 @@ export default function Dashboard() {
             <div className="stat-label">For Sale</div>
           </div>
           <div className="stat-item">
-            <div className="stat-value">2</div>
+            <div className="stat-value">4</div>
             <div className="stat-label">DB Shards Live</div>
           </div>
         </div>
