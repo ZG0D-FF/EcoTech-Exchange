@@ -10,3 +10,4 @@ google-auth
 google-auth-oauthlib
 requests
 python-dotenv
+psycopg2-binary
