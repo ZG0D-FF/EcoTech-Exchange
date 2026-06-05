@@ -47,7 +47,7 @@ export default function Auth() {
   async function handleGoogleSuccess(credentialResponse) {
     setLoading(true); setError('')
     try {
-      const res = await api.googleLogin(credentialResponse.credential)
+      const res = await api.googleLogin(credentialResponse.credential, form.region)
       if (res.access_token) {
         storage.set('session', {
           token: res.access_token,
@@ -100,6 +100,8 @@ export default function Auth() {
             <select className="form-select" value={form.region} onChange={set('region')}>
               <option value="north">🔵 North Shard</option>
               <option value="south">🟢 South Shard</option>
+              <option value="east">🔴 East Shard</option>
+              <option value="west">🟡 West Shard</option>
             </select>
           </div>
 
