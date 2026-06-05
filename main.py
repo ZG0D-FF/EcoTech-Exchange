@@ -29,7 +29,14 @@ CACHE_TTL_SECONDS = 60
 # --- CORS CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"], 
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173", 
+        "http://localhost:8000", 
+        "http://127.0.0.1:8000",
+        "https://eco-tech-exchange.vercel.app",
+        "https://ecotech-exchange.onrender.com"
+    ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,6 +103,13 @@ def append_to_ledger(conn, user_id: str, action: str, endpoint: str):
     )
     conn.commit()
 
+@app.get("/sync/audit-logs")
+def sync_audit_logs(last_synced_at: str, x_region: str = Header(default="north")):
+    conn = get_db_connection(x_region)
+    logs = conn.execute("SELECT * FROM audit_logs WHERE timestamp > ? ORDER BY timestamp ASC", (last_synced_at,)).fetchall()
+    conn.close()
+    return {"mutations": [dict(log) for log in logs]}
+
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 security = HTTPBearer()
@@ -138,6 +152,7 @@ class UserLogin(BaseModel):
 
 class GoogleToken(BaseModel):
     token: str
+    region: str = 'north'
 
 class EquipmentCreate(BaseModel):
     title: str
@@ -162,8 +177,7 @@ def google_auth(data: GoogleToken):
         # 1. Blind Index Lookup
         blind_email = get_blind_index(email.lower().strip())
         
-        # We default Google users to the North shard for this portfolio (or could ask them on first login)
-        region = 'north'
+        region = data.region.lower()
         conn = get_db_connection(region)
         cursor = conn.cursor()
         
@@ -314,6 +328,21 @@ def create_equipment(item: EquipmentCreate, background_tasks: BackgroundTasks, x
     new_id = ulid.new().str
     current_time_iso = datetime.now(timezone.utc).isoformat()
     
+    # 🤖 AI Auto-Categorization (Phase 5)
+    # If the user didn't provide a specific category, our basic NLP logic guesses it based on the title/description.
+    if not item.category or item.category.lower() == 'other':
+        text_corpus = (item.title + " " + item.description).lower()
+        if any(keyword in text_corpus for keyword in ['arduino', 'esp32', 'pi', 'microcontroller', 'board']):
+            item.category = 'Microcontrollers'
+        elif any(keyword in text_corpus for keyword in ['oscilloscope', 'multimeter', 'fluke', 'tektronix', 'test']):
+            item.category = 'Test Equipment'
+        elif any(keyword in text_corpus for keyword in ['printer', 'pla', 'resin', 'extruder']):
+            item.category = '3D Printing'
+        elif any(keyword in text_corpus for keyword in ['sensor', 'radar', 'lidar', 'temp', 'humidity']):
+            item.category = 'Sensors'
+        else:
+            item.category = 'Miscellaneous Components'
+
     cursor.execute(
         """
         INSERT INTO equipment 
