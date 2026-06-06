@@ -12,7 +12,7 @@ const updateSW = registerSW({
 })
 
 // --- REFEREE: Global Error Tracking ---
-const sendErrorToReferee = (message, error) => {
+const sendErrorToReferee = async (message, error) => {
   try {
     const url = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
     let region = 'north';
@@ -23,11 +23,31 @@ const sendErrorToReferee = (message, error) => {
       }
     } catch (e) {}
 
+    const payloadMsg = message || 'Unknown UI Error';
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    
+    // Generate HMAC SHA-256 Signature natively
+    const secret = import.meta.env.VITE_REFEREE_SECRET || 'fallback-secret-for-dev';
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' },
+      false, ['sign']
+    );
+    const signatureBuffer = await crypto.subtle.sign(
+      'HMAC', key, enc.encode(timestamp + payloadMsg)
+    );
+    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+    const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
     fetch(`${url}/log/error`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-timestamp': timestamp,
+        'x-signature': signatureHex
+      },
       body: JSON.stringify({
-        message: message || 'Unknown UI Error',
+        message: payloadMsg,
         stack_trace: error?.stack || null,
         url: window.location.href,
         user_agent: navigator.userAgent,
