@@ -66,11 +66,14 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId="279406375654-e0cegh0bmm9he2dcalovns8ulf44s1ns.apps.googleusercontent.com">
-      <App />
-    </GoogleOAuthProvider>
+    <ErrorBoundary>
+      <GoogleOAuthProvider clientId="279406375654-e0cegh0bmm9he2dcalovns8ulf44s1ns.apps.googleusercontent.com">
+        <App />
+      </GoogleOAuthProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 )
