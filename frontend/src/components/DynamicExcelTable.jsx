@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { api } from '../utils/api';
 import {
   Plus, Trash2, CalculatorIcon, Search, X, ChevronDown,
@@ -75,21 +75,28 @@ export default function DynamicExcelTable({ tableName, tableData, reloadData, Ed
     );
   }
 
-  const columns = Object.keys(tableData[0]).filter(col => col !== 'id' && col !== 'password_hash' && col !== 'is_deleted');
-  const numericColumns = columns.filter(col => tableData.some(row => !isNaN(parseFloat(row[col]))));
+  const columns = useMemo(() => 
+    Object.keys(tableData[0]).filter(col => col !== 'id' && col !== 'password_hash' && col !== 'is_deleted')
+  , [tableData]);
+
+  const numericColumns = useMemo(() => 
+    columns.filter(col => tableData.some(row => !isNaN(parseFloat(row[col]))))
+  , [columns, tableData]);
 
   // Cascading filter logic (unchanged)
-  const filteredData = tableData.filter(row => {
-    const isDeleted = String(row.is_deleted) === '1' || String(row.is_deleted) === 'true' || row.is_deleted === true;
-    if (isDeleted && !showTrash) return false;
+  const filteredData = useMemo(() => {
+    return tableData.filter(row => {
+      const isDeleted = String(row.is_deleted) === '1' || String(row.is_deleted) === 'true' || row.is_deleted === true;
+      if (isDeleted && !showTrash) return false;
 
-    if (activeFilters.length === 0) return true;
-    return activeFilters.every(f => {
-      if (!f.value) return true;
-      const cellValue = String(row[f.column] || '').toLowerCase();
-      return cellValue.includes(f.value.toLowerCase());
+      if (activeFilters.length === 0) return true;
+      return activeFilters.every(f => {
+        if (!f.value) return true;
+        const cellValue = String(row[f.column] || '').toLowerCase();
+        return cellValue.includes(f.value.toLowerCase());
+      });
     });
-  });
+  }, [tableData, activeFilters, showTrash]);
 
   const addRow = async () => { await api.addDynamicRow(tableName); reloadData(); };
 
