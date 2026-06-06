@@ -58,6 +58,32 @@ export default function DynamicExcelTable({ tableName, tableData, reloadData, Ed
   const [hoveredRow, setHoveredRow] = useState(null);
   const [showTrash, setShowTrash] = useState(false);
 
+  const columns = useMemo(() => {
+    if (!tableData || tableData.length === 0) return [];
+    return Object.keys(tableData[0]).filter(col => col !== 'id' && col !== 'password_hash' && col !== 'is_deleted');
+  }, [tableData]);
+
+  const numericColumns = useMemo(() => {
+    if (!tableData || tableData.length === 0) return [];
+    return columns.filter(col => tableData.some(row => !isNaN(parseFloat(row[col]))));
+  }, [columns, tableData]);
+
+  // Cascading filter logic (unchanged)
+  const filteredData = useMemo(() => {
+    if (!tableData || tableData.length === 0) return [];
+    return tableData.filter(row => {
+      const isDeleted = String(row.is_deleted) === '1' || String(row.is_deleted) === 'true' || row.is_deleted === true;
+      if (isDeleted && !showTrash) return false;
+
+      if (activeFilters.length === 0) return true;
+      return activeFilters.every(f => {
+        if (!f.value) return true;
+        const cellValue = String(row[f.column] || '').toLowerCase();
+        return cellValue.includes(f.value.toLowerCase());
+      });
+    });
+  }, [tableData, activeFilters, showTrash]);
+
   if (!tableData || tableData.length === 0) {
     return (
       <div style={{ ...glass, padding: '24px', textAlign: 'center', color: '#8892b0', fontSize: '13px' }}>
@@ -74,29 +100,6 @@ export default function DynamicExcelTable({ tableName, tableData, reloadData, Ed
       </div>
     );
   }
-
-  const columns = useMemo(() => 
-    Object.keys(tableData[0]).filter(col => col !== 'id' && col !== 'password_hash' && col !== 'is_deleted')
-  , [tableData]);
-
-  const numericColumns = useMemo(() => 
-    columns.filter(col => tableData.some(row => !isNaN(parseFloat(row[col]))))
-  , [columns, tableData]);
-
-  // Cascading filter logic (unchanged)
-  const filteredData = useMemo(() => {
-    return tableData.filter(row => {
-      const isDeleted = String(row.is_deleted) === '1' || String(row.is_deleted) === 'true' || row.is_deleted === true;
-      if (isDeleted && !showTrash) return false;
-
-      if (activeFilters.length === 0) return true;
-      return activeFilters.every(f => {
-        if (!f.value) return true;
-        const cellValue = String(row[f.column] || '').toLowerCase();
-        return cellValue.includes(f.value.toLowerCase());
-      });
-    });
-  }, [tableData, activeFilters, showTrash]);
 
   const addRow = async () => { await api.addDynamicRow(tableName); reloadData(); };
 
