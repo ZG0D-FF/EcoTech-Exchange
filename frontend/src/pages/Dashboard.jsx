@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../utils/api'
 import { storage } from '../utils/storage'
@@ -103,14 +103,16 @@ export default function Dashboard() {
     }
   }
 
-  const filtered = equipment.filter(e => {
-    if (!e) return false;
-    const matchSearch = e.title?.toLowerCase().includes(filter.toLowerCase()) ||
-                        e.category?.toLowerCase().includes(filter.toLowerCase())
-    if (chip === 'sale') return matchSearch && e.is_for_sale
-    if (chip === 'rent') return matchSearch && e.rental_price_per_day != null
-    return matchSearch
-  })
+  const filtered = useMemo(() => {
+    return equipment.filter(e => {
+      if (!e) return false;
+      const matchSearch = e.title?.toLowerCase().includes(filter.toLowerCase()) ||
+                          e.category?.toLowerCase().includes(filter.toLowerCase())
+      if (chip === 'sale') return matchSearch && e.is_for_sale
+      if (chip === 'rent') return matchSearch && e.rental_price_per_day != null
+      return matchSearch
+    });
+  }, [equipment, filter, chip]);
 
   return (
     <>
