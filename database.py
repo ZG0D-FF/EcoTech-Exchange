@@ -113,7 +113,26 @@ def get_db_connection(region: str):
     return conn
 
 def get_hr_connection():
-    """Returns a direct connection to the centralized HR database."""
+    """Returns a direct connection to the centralized HR database, supporting local SQLite and Turso."""
+    app_env = os.getenv("APP_ENV", "development")
+    
+    if app_env == "production":
+        db_url = os.getenv("HR_DB_URL", "")
+    else:
+        db_url = os.getenv("DEV_HR_DB_URL", "")
+        
+    # TURSO (Cloud Edge SQLite) ROUTER
+    if db_url.startswith("libsql"):
+        try:
+            import libsql_experimental as libsql
+            auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
+            conn = libsql.connect(db_url, auth_token=auth_token)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except ImportError:
+            print("WARNING: Turso SDK not installed. Falling back to local DB.")
+            
+    # LOCAL SQLITE FALLBACK
     conn = sqlite3.connect('ecotech_hr.db')
     conn.row_factory = sqlite3.Row
     return conn

