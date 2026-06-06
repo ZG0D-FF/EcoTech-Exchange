@@ -700,14 +700,18 @@ export default function Attendance() {
 
           const handleToggle = async (e) => {
             e.preventDefault(); e.stopPropagation();
-            if (!isTrue) { 
-                await api.editCell(table, id, otherCol, "0"); 
-                handleCellSave(table, id, column, "1"); 
-                // 🔥 DUAL LINK: Toggling button updates the Status text
-                handleCellSave(table, id, 'status', column === 'Present' ? 'Present' : 'Absent');
-            } 
-            else { 
-                handleCellSave(table, id, column, "0"); 
+            try {
+                if (!isTrue) { 
+                    await api.editCell(table, id, otherCol, "0"); 
+                    await api.editCell(table, id, column, "1"); 
+                    // 🔥 DUAL LINK: Toggling button updates the Status text
+                    await api.editCell(table, id, 'status', column === 'Present' ? 'Present' : 'Absent');
+                } else { 
+                    await api.editCell(table, id, column, "0"); 
+                }
+                loadData();
+            } catch (err) {
+                alert("Failed to update cell");
             }
           };
 
@@ -785,16 +789,19 @@ export default function Attendance() {
             type={type}
             value={val}
             onChange={e => setVal(e.target.value)}
-                        onBlur={() => { 
+            onBlur={async () => { 
               setIsEditing(false); 
               if (val !== value) { 
-                handleCellSave(table, id, column, val);
-                // 🔥 DUAL LINK: Typing Status updates the buttons
-                if (column === 'status') {
-                  const s = val.toLowerCase();
-                  if (s === 'present') { handleCellSave(table, id, 'Present', '1'); handleCellSave(table, id, 'Absent', '0'); }
-                  else if (s === 'absent') { handleCellSave(table, id, 'Present', '0'); handleCellSave(table, id, 'Absent', '1'); }
-                }
+                try {
+                  await api.editCell(table, id, column, val);
+                  // 🔥 DUAL LINK: Typing Status updates the buttons
+                  if (column === 'status') {
+                    const s = val.toLowerCase();
+                    if (s === 'present') { await api.editCell(table, id, 'Present', '1'); await api.editCell(table, id, 'Absent', '0'); }
+                    else if (s === 'absent') { await api.editCell(table, id, 'Present', '0'); await api.editCell(table, id, 'Absent', '1'); }
+                  }
+                  loadData();
+                } catch (err) { alert("Failed to update cell"); }
               } 
             }}
             onKeyDown={e => { 
