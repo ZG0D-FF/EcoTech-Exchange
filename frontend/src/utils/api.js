@@ -21,7 +21,7 @@ const safeFetch = async (url, options = {}) => {
   }
 
   try {
-    return await safeFetch(url, options);
+    return await fetch(url, options);
   } finally {
     if (isMutation && signature) {
       setTimeout(() => pendingMutations.delete(signature), 500);
