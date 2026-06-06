@@ -840,16 +840,13 @@ def edit_cell(req: CellEditRequest, x_region: str = Header(default="north"), use
         # 4. Realtime Blockchain Ledger Syncing
         if req.table == "attendance" and old_att:
             if req.column in ["status", "clock_in", "clock_out"]:
-                new_status = val_to_save if req.column == "status" else old_att["status"]
-                audit_user = user.get('emp_id', user['sub'])
-                append_attendance_audit(conn.cursor(), req.id, audit_user, old_att['status'], new_status, old_att['clock_in'], f"Dynamic Excel Edit: {req.column}")
-            
-                # 4. Realtime Blockchain Ledger Syncing
-        if req.table == "attendance" and old_att:
-            if req.column in ["status", "clock_in", "clock_out"]:
-                new_status = val_to_save if req.column == "status" else old_att["status"]
-                audit_user = user.get('emp_id', user['sub'])
-                append_attendance_audit(conn.cursor(), req.id, audit_user, old_att['status'], new_status, old_att['clock_in'], f"Dynamic Excel Edit: {req.column}")
+                old_keys = old_att.keys()
+                old_status_val = old_att["status"] if "status" in old_keys else "N/A"
+                old_clock_in_val = old_att["clock_in"] if "clock_in" in old_keys else "N/A"
+                
+                new_status = val_to_save if req.column == "status" else old_status_val
+                audit_user = user.get('emp_id', user.get('sub', 'Unknown'))
+                append_attendance_audit(conn.cursor(), req.id, audit_user, old_status_val, new_status, old_clock_in_val, f"Dynamic Excel Edit: {req.column}")
         
         # 5. 🛡️ Leave Balance Deduction Syncing
         if req.table == "leave_requests" and req.column == "status" and str(val_to_save).lower() == "approved":
