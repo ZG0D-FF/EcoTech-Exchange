@@ -570,6 +570,10 @@ def release_multi_tiered_lock(lock_key: str, worker_id: str):
 def read_root():
     return {"message": "EcoTech Exchange API: SLIC FAST Architecture Active!"}
 
+@app.get("/hr/health")
+def hr_health():
+    return {"status": "online"}
+
 @app.get("/equipment")
 async def get_all_equipment(background_tasks: BackgroundTasks, x_region: str = Header(default="north")):
     """
