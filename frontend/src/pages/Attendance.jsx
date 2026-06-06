@@ -15,8 +15,10 @@ export const AttendanceContext = createContext(null);
     const EditableCell = ({ value, table, row, id, column, type = "text" }) => {
     const { data, handleCellSave, loadData } = useContext(AttendanceContext);
     const [isEditing, setIsEditing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [val, setVal] = useState(value || "");
 
+    if (isSaving) return <span style={{ opacity: 0.5, cursor: 'wait' }}>⏳ Saving...</span>;
     if (!data.is_admin) return <span>{value}</span>;
 
     // 1. 🔥 Employee Dropdown (Changes those random TBD_ IDs into Real Names!)
@@ -637,19 +639,23 @@ export const AttendanceContext = createContext(null);
 
           const handleToggle = async (e) => {
             e.preventDefault(); e.stopPropagation();
+            if (isSaving) return;
+            setIsSaving(true);
             try {
                 if (!isTrue) { 
-                    await Promise.all([
-                        api.editCell(table, id, otherCol, "0"),
-                        api.editCell(table, id, column, "1"),
-                        api.editCell(table, id, 'status', column === 'Present' ? 'Present' : 'Absent')
+                    await api.editCellBatch([
+                        { table, id, column: otherCol, value: "0" },
+                        { table, id, column, value: "1" },
+                        { table, id, column: 'status', value: column === 'Present' ? 'Present' : 'Absent' }
                     ]);
                 } else { 
-                    await api.editCell(table, id, column, "0"); 
+                    await api.editCellBatch([{ table, id, column, value: "0" }]); 
                 }
                 loadData();
             } catch (err) {
                 alert("Failed to update cell");
+            } finally {
+                setIsSaving(false);
             }
           };
 
@@ -730,17 +736,19 @@ export const AttendanceContext = createContext(null);
             onBlur={async () => { 
               setIsEditing(false); 
               if (val !== value) { 
+                setIsSaving(true);
                 try {
-                  const tasks = [api.editCell(table, id, column, val)];
+                  const tasks = [{ table, id, column, value: val }];
                   // 🔥 DUAL LINK: Typing Status updates the buttons
                   if (column === 'status') {
                     const s = val.toLowerCase();
-                    if (s === 'present') { tasks.push(api.editCell(table, id, 'Present', '1'), api.editCell(table, id, 'Absent', '0')); }
-                    else if (s === 'absent') { tasks.push(api.editCell(table, id, 'Present', '0'), api.editCell(table, id, 'Absent', '1')); }
+                    if (s === 'present') { tasks.push({ table, id, column: 'Present', value: '1' }, { table, id, column: 'Absent', value: '0' }); }
+                    else if (s === 'absent') { tasks.push({ table, id, column: 'Present', value: '0' }, { table, id, column: 'Absent', value: '1' }); }
                   }
-                  await Promise.all(tasks);
+                  await api.editCellBatch(tasks);
                   loadData();
                 } catch (err) { alert("Failed to update cell"); }
+                finally { setIsSaving(false); }
               } 
             }}
             onKeyDown={e => { 
