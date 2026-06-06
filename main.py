@@ -1037,11 +1037,8 @@ class CellEditRequest(BaseModel):
     column: str
     value: str
 
-class CellEditRequest(BaseModel):
-    table: str
-    id: str
-    column: str
-    value: str
+class CellEditBatchRequest(BaseModel):
+    edits: list[CellEditRequest]
 
 class DynamicColumnReq(BaseModel):
     table: str
@@ -1089,6 +1086,17 @@ def process_cqrs_payroll_override(row_id: str, column: str, new_value):
         print(f"CQRS Processing Failed: {e}")
     finally:
         conn.close()
+
+@app.put("/hr/edit-cell-batch")
+def edit_cell_batch(req: CellEditBatchRequest, background_tasks: BackgroundTasks, x_region: str = Header(default="north"), user: dict = Depends(get_current_user)):
+    responses = []
+    for edit in req.edits:
+        try:
+            res = edit_cell(edit, background_tasks, x_region, user)
+            responses.append(res)
+        except HTTPException as e:
+            raise HTTPException(status_code=e.status_code, detail=f"Batch Error on {edit.column}: {e.detail}")
+    return {"message": "Batch completely processed", "results": responses}
 
 @app.put("/hr/edit-cell")
 def edit_cell(req: CellEditRequest, background_tasks: BackgroundTasks, x_region: str = Header(default="north"), user: dict = Depends(get_current_user)):
