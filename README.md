@@ -1,4 +1,4 @@
-# 🌍 EcoTech Exchange (A Full STACK experiment)
+# 🌍 EcoTech Exchange
 
 **EcoTech Exchange** is a scalable, distributed marketplace designed to address the $712B circular economy. It enables hardware enthusiasts and ECE students to rent out expensive tech equipment (oscilloscopes, 3D printers) or sell upcycled electronic components to prevent e-waste.
 
@@ -17,8 +17,15 @@ Our architecture is built using the **SLIC FAST** mnemonic to ensure enterprise-
 - **(C) Cache:** Redis is utilized to store frequently accessed equipment catalogs, resulting in cache hits that drastically reduce database load.
 - **(F) Front-End Servers:** A Vite + React.js web dashboard that serves the UI and manages HTTP requests.
 - **(A) Analytics:** Internal system tracking to monitor API response times and cache hit/miss ratios.
-- **(S) Storage:** A distributed storage strategy using **Logical Sharding** (partitioning data across multiple databases based on regions) to improve read/write throughput and fault tolerance.
-- **(T) Task Queue:** RabbitMQ handles asynchronous tasks like sending "Rental Confirmed" emails and encoding uploaded hardware videos behind the scenes so the user experience is never blocked.
+- **(S) Storage:** A distributed storage strategy using **Logical Sharding** (partitioning data across multiple databases based on regions) to improve read/write throughput. Currently synced live to **Supabase** in production.
+- **(T) Task Queue:** RabbitMQ (simulated) handles asynchronous tasks like sending emails and processing uploaded hardware images so the main thread is never blocked.
+
+---
+
+## 🚀 Live Cloud Deployment
+- **Frontend (Vercel):** The React.js SPA dashboard is deployed to Vercel's global edge network.
+- **Backend (Render):** The Python FastAPI ecosystem runs natively on Render.
+- **Database (Supabase):** Live PostgreSQL logical shards handling our zero-footprint authentication and equipment catalogs.
 
 ---
 
@@ -50,6 +57,7 @@ You cannot code against natural disasters. If a hurricane hits our primary data 
 
 - **Regional Failover:** Our cloud architecture is designed so that if the US-East server goes down, traffic is immediately rerouted to our backup servers in Europe.
 - **Offline-First PWA:** Because our React Native app uses Service Workers and local IndexedDB, users can still view cached equipment and queue up rentals even if the central API suffers a prolonged system outage. When the servers come back online, the Background Sync queue pushes the data.
+- **Zero-Dependency Telemetry (The Referee):** Rather than relying on bloated SDKs like Sentry, we built a global middleware that automatically intercepts backend Python crashes and frontend UI crashes, writing the stack traces directly to a private `error_logs` database table.
 
 ---
 
@@ -59,6 +67,7 @@ You cannot code against natural disasters. If a hurricane hits our primary data 
 - Users can generate a secure account via JWT authentication.
 - Users can browse, search, and filter hardware components.
 - Users can list equipment for sale or for daily rental.
+- Users can queue up hardware rentals or purchases using the Offline-First Distributed Cart system.
 
 ### Non-Functional Requirements
 - **Availability:** The system must remain usable even during network drops (Offline PWA).
