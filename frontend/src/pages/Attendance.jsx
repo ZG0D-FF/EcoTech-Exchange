@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, createContext, useContext } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../utils/api'
 import { storage } from '../utils/storage'
@@ -10,73 +10,10 @@ import {
   AlertCircle, Send, Lock
 } from 'lucide-react'
 
-export default function Attendance() {
-  const navigate = useNavigate()
-  const session = storage.get('session')
-  const [showDropdown, setShowDropdown] = useState(false)
-
-  const [tab, setTab] = useState('monthly')
-  const [data, setData] = useState({ employees: [], attendance: [], audit_logs: [], messages: [], leave_requests: [], leave_balance: [], overrides: [] })
-  const [error, setError] = useState(null)
-  const [convIdx, setConvIdx] = useState(0)
-  const [msgInput, setMsgInput] = useState("")
-    // Extracts the full name of the current month (e.g. "June")
-  const [monthStr, setMonthStr] = useState(new Date().toLocaleString('en-US', { month: 'long' }));
-
-  useEffect(() => {
-    if (session?.role === 'user') {
-      navigate('/')
-      return
-    }
-    loadData()
-  }, [])
-
-  const handleLogout = () => {
-    storage.clear()
-    navigate('/auth')
-  }
-
-  const handleClearCache = async () => {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/cache/clear`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + session?.token
-        }
-      });
-      const resData = await res.json();
-      alert(resData.message || resData.detail);
-    } catch (e) {
-      alert("Failed to clear cache.");
-    }
-  }
-
-  const loadData = async () => {
-    try {
-      setError(null)
-      const res = await api.getHRDashboard()
-      if (res.detail) {
-        setError(res.detail)
-        return
-      }
-      setData(res)
-    } catch (e) {
-      console.error(e)
-      setError("Failed to load HR Dashboard. Are you sure you are an Admin?")
-    }
-  }
-
-  const handleCellSave = async (table, id, column, value) => {
-    try {
-      await api.editCell(table, id, column, value);
-      loadData();
-    } catch (e) {
-      alert("Failed to update cell");
-    }
-  }
+export const AttendanceContext = createContext(null);
 
     const EditableCell = ({ value, table, row, id, column, type = "text" }) => {
+    const { data, handleCellSave, loadData } = useContext(AttendanceContext);
     const [isEditing, setIsEditing] = useState(false);
     const [val, setVal] = useState(value || "");
 
@@ -702,10 +639,11 @@ export default function Attendance() {
             e.preventDefault(); e.stopPropagation();
             try {
                 if (!isTrue) { 
-                    await api.editCell(table, id, otherCol, "0"); 
-                    await api.editCell(table, id, column, "1"); 
-                    // 🔥 DUAL LINK: Toggling button updates the Status text
-                    await api.editCell(table, id, 'status', column === 'Present' ? 'Present' : 'Absent');
+                    await Promise.all([
+                        api.editCell(table, id, otherCol, "0"),
+                        api.editCell(table, id, column, "1"),
+                        api.editCell(table, id, 'status', column === 'Present' ? 'Present' : 'Absent')
+                    ]);
                 } else { 
                     await api.editCell(table, id, column, "0"); 
                 }
@@ -793,13 +731,14 @@ export default function Attendance() {
               setIsEditing(false); 
               if (val !== value) { 
                 try {
-                  await api.editCell(table, id, column, val);
+                  const tasks = [api.editCell(table, id, column, val)];
                   // 🔥 DUAL LINK: Typing Status updates the buttons
                   if (column === 'status') {
                     const s = val.toLowerCase();
-                    if (s === 'present') { await api.editCell(table, id, 'Present', '1'); await api.editCell(table, id, 'Absent', '0'); }
-                    else if (s === 'absent') { await api.editCell(table, id, 'Present', '0'); await api.editCell(table, id, 'Absent', '1'); }
+                    if (s === 'present') { tasks.push(api.editCell(table, id, 'Present', '1'), api.editCell(table, id, 'Absent', '0')); }
+                    else if (s === 'absent') { tasks.push(api.editCell(table, id, 'Present', '0'), api.editCell(table, id, 'Absent', '1')); }
                   }
+                  await Promise.all(tasks);
                   loadData();
                 } catch (err) { alert("Failed to update cell"); }
               } 
@@ -832,6 +771,73 @@ export default function Attendance() {
       </span>
     );
   };
+
+export default function Attendance() {
+  const navigate = useNavigate()
+  const session = storage.get('session')
+  const [showDropdown, setShowDropdown] = useState(false)
+
+  const [tab, setTab] = useState('monthly')
+  const [data, setData] = useState({ employees: [], attendance: [], audit_logs: [], messages: [], leave_requests: [], leave_balance: [], overrides: [] })
+  const [error, setError] = useState(null)
+  const [convIdx, setConvIdx] = useState(0)
+  const [msgInput, setMsgInput] = useState("")
+    // Extracts the full name of the current month (e.g. "June")
+  const [monthStr, setMonthStr] = useState(new Date().toLocaleString('en-US', { month: 'long' }));
+
+  useEffect(() => {
+    if (session?.role === 'user') {
+      navigate('/')
+      return
+    }
+    loadData()
+  }, [])
+
+  const handleLogout = () => {
+    storage.clear()
+    navigate('/auth')
+  }
+
+  const handleClearCache = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/cache/clear`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + session?.token
+        }
+      });
+      const resData = await res.json();
+      alert(resData.message || resData.detail);
+    } catch (e) {
+      alert("Failed to clear cache.");
+    }
+  }
+
+  const loadData = async () => {
+    try {
+      setError(null)
+      const res = await api.getHRDashboard()
+      if (res.detail) {
+        setError(res.detail)
+        return
+      }
+      setData(res)
+    } catch (e) {
+      console.error(e)
+      setError("Failed to load HR Dashboard. Are you sure you are an Admin?")
+    }
+  }
+
+  const handleCellSave = async (table, id, column, value) => {
+    try {
+      await api.editCell(table, id, column, value);
+      loadData();
+    } catch (e) {
+      alert("Failed to update cell");
+    }
+  }
+
 
   const getAv = (i) => ['av-a','av-b','av-c','av-d','av-e'][i % 5]
   
@@ -906,6 +912,7 @@ export default function Attendance() {
   const labelStyle = { fontSize: '10px', color: '#8892b0', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: '600', marginBottom: '4px', display: 'block' };
 
   return (
+    <AttendanceContext.Provider value={{ data, handleCellSave, loadData }}>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -1373,4 +1380,5 @@ export default function Attendance() {
 
     </motion.div>
   )
+    </AttendanceContext.Provider>
 }
