@@ -108,6 +108,13 @@ export const api = {
       body: JSON.stringify({ table, id, column, value })
     }).then(r => r.json()),
 	
+  editCellBatch: (editsArray) =>
+    fetch(`${BASE_URL}/hr/edit-cell-batch`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ edits: editsArray })
+    }).then(r => r.json()),
+	
   requestLeave: (data) =>
     fetch(`${BASE_URL}/hr/leaves/request`, {
       method: 'POST',
