@@ -1379,6 +1379,6 @@ export default function Attendance() {
       </AnimatePresence>
 
     </motion.div>
-  )
     </AttendanceContext.Provider>
+  )
 }
