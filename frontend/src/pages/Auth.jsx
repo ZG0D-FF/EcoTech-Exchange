@@ -10,7 +10,7 @@ export default function Auth() {
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
-  const [form, setForm] = useState({ name: '', email: '', password: '', region: 'north' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', region: 'north', role: 'user' })
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function handleSubmit(e) {
@@ -31,7 +31,9 @@ export default function Auth() {
           storage.set('session', {
             token: res.access_token,
             userId: res.user_id,
-            region: res.shard_region
+            region: res.shard_region,
+            role: res.role,
+            name: res.name || 'User'
           })
           navigate('/')
         } else {
@@ -52,7 +54,9 @@ export default function Auth() {
         storage.set('session', {
           token: res.access_token,
           userId: res.user_id,
-          region: res.shard_region
+          region: res.shard_region,
+          role: res.role,
+          name: res.name || 'Google User'
         })
         navigate('/')
       } else {
@@ -81,23 +85,46 @@ export default function Auth() {
           {mode === 'register' && (
             <div className="form-group">
               <label className="form-label">Full Name</label>
-              <input className="form-input" placeholder="e.g. DJ Sharma" value={form.name} onChange={set('name')} required />
+              <input className="form-input" name="name" placeholder="e.g. DJ Sharma" value={form.name} onChange={set('name')} required />
             </div>
           )}
 
           <div className="form-group">
             <label className="form-label">Email</label>
-            <input className="form-input" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required />
+            <input className="form-input" name="email" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required />
           </div>
 
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" placeholder="••••••••••••" value={form.password} onChange={set('password')} required />
+            <input className="form-input" name="password" type="password" placeholder="••••••••••••" value={form.password} onChange={set('password')} required />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Account Type</label>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              {['user', 'employee', 'admin'].map(r => (
+                <button 
+                  key={r}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, role: r }))}
+                  style={{
+                    flex: 1, padding: '8px', borderRadius: '6px', 
+                    background: form.role === r ? 'var(--accent-dim)' : 'var(--bg-surface)',
+                    border: `1px solid ${form.role === r ? 'var(--accent)' : 'var(--border)'}`,
+                    color: form.role === r ? 'var(--accent)' : 'var(--text-secondary)',
+                    fontWeight: 600, textTransform: 'capitalize', cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="form-group">
             <label className="form-label">Region (Database Shard)</label>
-            <select className="form-select" value={form.region} onChange={set('region')}>
+            <select className="form-select" name="region" value={form.region} onChange={set('region')}>
               <option value="north">🔵 North Shard</option>
               <option value="south">🟢 South Shard</option>
               <option value="east">🔴 East Shard</option>

@@ -77,17 +77,17 @@ export default function AddEquipment() {
 
               <div className="form-group add-form-full">
                 <label className="form-label">Title *</label>
-                <input className="form-input" placeholder="e.g. Raspberry Pi Zero 2W" value={form.title} onChange={set('title')} required />
+                <input className="form-input" name="title" placeholder="e.g. Raspberry Pi Zero 2W" value={form.title} onChange={set('title')} required />
               </div>
 
               <div className="form-group add-form-full">
                 <label className="form-label">Description</label>
-                <input className="form-input" placeholder="Short description of the hardware" value={form.description} onChange={set('description')} />
+                <input className="form-input" name="description" placeholder="Short description of the hardware" value={form.description} onChange={set('description')} />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Category</label>
-                <select className="form-select" value={form.category} onChange={set('category')}>
+                <select className="form-select" name="category" value={form.category} onChange={set('category')}>
                   {['Microcontroller', 'SBC', 'Sensor', 'PCB', 'Power Supply', 'RF Module', 'Oscilloscope', 'Other'].map(c =>
                     <option key={c}>{c}</option>
                   )}
@@ -96,7 +96,7 @@ export default function AddEquipment() {
 
               <div className="form-group">
                 <label className="form-label">Condition</label>
-                <select className="form-select" value={form.condition} onChange={set('condition')}>
+                <select className="form-select" name="condition" value={form.condition} onChange={set('condition')}>
                   <option>New</option>
                   <option>Refurbished</option>
                   <option>Parts</option>
@@ -105,16 +105,16 @@ export default function AddEquipment() {
 
               <div className="form-group">
                 <label className="form-label">Buy Price (₹) — leave blank if rent only</label>
-                <input className="form-input" type="number" min="0" step="0.01" placeholder="e.g. 1500" value={form.price} onChange={set('price')} />
+                <input className="form-input" name="price" type="number" min="0" step="0.01" placeholder="e.g. 1500" value={form.price} onChange={set('price')} />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Rental Price / Day (₹) — leave blank if sale only</label>
-                <input className="form-input" type="number" min="0" step="0.01" placeholder="e.g. 150" value={form.rental_price_per_day} onChange={set('rental_price_per_day')} />
+                <input className="form-input" name="rental_price_per_day" type="number" min="0" step="0.01" placeholder="e.g. 150" value={form.rental_price_per_day} onChange={set('rental_price_per_day')} />
               </div>
 
               <div className="form-group add-form-full" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.75rem' }}>
-                <input type="checkbox" id="is_for_sale" checked={form.is_for_sale} onChange={set('is_for_sale')} style={{ width: '18px', height: '18px', accentColor: 'var(--accent)' }} />
+                <input type="checkbox" name="is_for_sale" id="is_for_sale" checked={form.is_for_sale} onChange={set('is_for_sale')} style={{ width: '18px', height: '18px', accentColor: 'var(--accent)' }} />
                 <label htmlFor="is_for_sale" style={{ color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.9rem' }}>
                   Mark as available for purchase
                 </label>

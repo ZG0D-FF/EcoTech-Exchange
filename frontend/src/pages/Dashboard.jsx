@@ -7,30 +7,39 @@ function SkeletonCard() {
   return <div className="skeleton skeleton-card" />
 }
 
-function EquipmentCard({ item }) {
-  const cond = item.condition?.toLowerCase()
+function EquipmentCard({ item, session, onDelete, onAddCart }) {
+  const cond = item?.condition?.toLowerCase()
+  const canDelete = session?.userId === item?.seller_id || session?.role === 'admin'
   return (
     <div className="equipment-card glass">
-      <div className="card-header">
-        <span className="card-title">{item.title}</span>
-        <span className="card-category">{item.category}</span>
+      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <span className="card-title">{item?.title || 'Unknown Title'}</span>
+          <span className="card-category">{item?.category || 'Uncategorized'}</span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-ghost btn-sm" style={{ padding: '0.25rem 0.5rem', marginTop: '-0.25rem' }} onClick={() => onAddCart(item?.id)}>+ Queue</button>
+          {canDelete && (
+            <button className="btn btn-ghost btn-sm" style={{ color: '#ff4444', padding: '0.25rem 0.5rem', marginTop: '-0.25rem' }} onClick={() => onDelete(item?.id)}>Delete</button>
+          )}
+        </div>
       </div>
-      {item.description && <p className="card-desc">{item.description}</p>}
+      {item?.description && <p className="card-desc">{item.description}</p>}
       <div className="card-badges">
-        {item.is_for_sale && <span className="badge badge-sale">For Sale</span>}
-        {item.rental_price_per_day && <span className="badge badge-rent">For Rent</span>}
+        {item?.is_for_sale && <span className="badge badge-sale">For Sale</span>}
+        {item?.rental_price_per_day != null && <span className="badge badge-rent">For Rent</span>}
         {cond === 'new' && <span className="badge badge-new">New</span>}
         {cond === 'refurbished' && <span className="badge badge-refurb">Refurbished</span>}
         {cond === 'parts' && <span className="badge badge-parts">Parts Only</span>}
       </div>
       <div className="card-prices">
-        {item.price != null && (
+        {item?.price != null && (
           <div className="price-item">
             <span className="price-label">Buy Price</span>
-            <span className="price-value">₹{item.price.toLocaleString()}</span>
+            <span className="price-value">₹{Number(item.price).toLocaleString()}</span>
           </div>
         )}
-        {item.rental_price_per_day != null && (
+        {item?.rental_price_per_day != null && (
           <div className="price-item">
             <span className="price-label">Per Day</span>
             <span className="price-value accent">₹{item.rental_price_per_day}</span>
@@ -71,7 +80,31 @@ export default function Dashboard() {
     navigate('/auth')
   }
 
+  async function handleDelete(id) {
+    if (!id) return;
+    if (!window.confirm("Are you sure you want to delete this hardware item?")) return;
+    try {
+      await api.deleteEquipment(id);
+      setEquipment(prev => prev.filter(e => e?.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete hardware. Check your permissions or network.");
+    }
+  }
+
+  async function handleAddToCart(id) {
+    if (!id) return;
+    try {
+      await api.addToCart(id);
+      alert("Added to queue!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add to queue.");
+    }
+  }
+
   const filtered = equipment.filter(e => {
+    if (!e) return false;
     const matchSearch = e.title?.toLowerCase().includes(filter.toLowerCase()) ||
                         e.category?.toLowerCase().includes(filter.toLowerCase())
     if (chip === 'sale') return matchSearch && e.is_for_sale
@@ -88,6 +121,8 @@ export default function Dashboard() {
           <span className="sync-pill" style={{ color: 'var(--text-muted)' }}>
             {session?.region === 'south' ? '🟢' : '🔵'} {session?.region} shard
           </span>
+          {session?.role !== 'user' && <Link to="/attendance" className="btn btn-ghost btn-sm">👥 Employees</Link>}
+          <Link to="/cart" className="btn btn-ghost btn-sm">🛒 Queue</Link>
           <Link to="/add" className="btn btn-primary btn-sm">+ List Hardware</Link>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Sign Out</button>
         </div>
@@ -169,7 +204,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="equipment-grid">
-            {filtered.map(item => <EquipmentCard key={item.id} item={item} />)}
+            {filtered.map(item => <EquipmentCard key={item?.id} item={item} session={session} onDelete={handleDelete} onAddCart={handleAddToCart} />)}
           </div>
         )}
       </main>

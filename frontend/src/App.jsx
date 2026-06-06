@@ -3,6 +3,8 @@ import { storage } from './utils/storage'
 import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 import AddEquipment from './pages/AddEquipment'
+import Cart from './pages/Cart'
+import Attendance from './pages/Attendance'
 
 function PrivateRoute({ children }) {
   const session = storage.get('session')
@@ -15,6 +17,8 @@ export default function App() {
       <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/cart" element={<PrivateRoute><Cart /></PrivateRoute>} />
+        <Route path="/attendance" element={<PrivateRoute><Attendance /></PrivateRoute>} />
         <Route path="/add" element={<PrivateRoute><AddEquipment /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,6 +1,6 @@
 import { storage } from './storage'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 // Reads the JWT + region from namespaced localStorage and injects into every request
 function getHeaders(extra = {}) {
@@ -48,5 +48,69 @@ export const api = {
   syncEquipment: (lastSyncedAt) =>
     fetch(`${BASE_URL}/sync/equipment?last_synced_at=${lastSyncedAt}`, {
       headers: getHeaders()
-    }).then(r => r.json())
+    }).then(r => r.json()),
+
+  deleteEquipment: (itemId) =>
+    fetch(`${BASE_URL}/equipment/${itemId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    }).then(r => r.json()),
+
+  getCart: () => fetch(`${BASE_URL}/cart`, { headers: getHeaders() }).then(r => r.json()),
+
+  addToCart: (equipmentId) =>
+    fetch(`${BASE_URL}/cart`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ equipment_id: equipmentId })
+    }).then(r => r.json()),
+
+  removeFromCart: (cartId) =>
+    fetch(`${BASE_URL}/cart/${cartId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    }).then(r => r.json()),
+
+  clockIn: (status) =>
+    fetch(`${BASE_URL}/attendance/clock-in`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ status })
+    }).then(r => r.json()),
+
+  clockOut: (recordId) =>
+    fetch(`${BASE_URL}/attendance/clock-out`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ record_id: recordId })
+    }).then(r => r.json()),
+
+  getMonthlyAttendance: (month) =>
+    fetch(`${BASE_URL}/attendance/monthly?month=${month}`, { headers: getHeaders() }).then(r => r.json()),
+
+  getMyLeaveSummary: (month) =>
+    fetch(`${BASE_URL}/attendance/my-summary?month=${month}`, { headers: getHeaders() }).then(r => r.json()),
+
+  getHRDashboard: () =>
+    fetch(`${BASE_URL}/hr/dashboard?t=${Date.now()}`, { headers: getHeaders(), cache: 'no-store' }).then(r => r.json()),
+
+  sendHRMessage: (data) =>
+    fetch(`${BASE_URL}/hr/messages`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    }).then(r => r.json()),
+
+  editCell: (table, id, column, value) =>
+    fetch(`${BASE_URL}/hr/edit-cell`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ table, id, column, value })
+    }).then(r => r.json()),
+	
+    addDynamicColumn: (table, column) => fetch(`${BASE_URL}/hr/dynamic/column`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ table, column }) }).then(r => r.json()),
+    deleteDynamicColumn: (table, column) => fetch(`${BASE_URL}/hr/dynamic/column`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ table, column }) }).then(r => r.json()),
+    addDynamicRow: (table) => fetch(`${BASE_URL}/hr/dynamic/row`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ table }) }).then(r => r.json()),
+    deleteDynamicRow: (table, row_id) => fetch(`${BASE_URL}/hr/dynamic/row/${table}/${row_id}`, { method: 'DELETE', headers: getHeaders() }).then(r => r.json()),
 }
+

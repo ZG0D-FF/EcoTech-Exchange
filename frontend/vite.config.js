@@ -23,7 +23,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png}'],
         runtimeCaching: [
           {
-            urlPattern: /^http:\/\/127\.0\.0\.1:8000\/equipment/i,
+            urlPattern: /^\/api\/equipment/i,
             handler: 'NetworkOnly',
             method: 'POST',
             options: {
@@ -34,7 +34,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^http:\/\/127\.0\.0\.1:8000\/.*/i,
+            urlPattern: /^\/api\/.*/i,
             handler: 'NetworkFirst',
             method: 'GET',
             options: {
@@ -47,5 +47,14 @@ export default defineConfig({
       }
     })
   ],
-  server: { port: 5173 }
+  server: { 
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
+  }
 })
