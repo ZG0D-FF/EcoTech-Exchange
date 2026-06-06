@@ -46,6 +46,39 @@ class PostgresConnectionWrapper:
     def close(self):
         self.conn.close()
 
+class LibsqlDictCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+    def execute(self, *args, **kwargs):
+        self._cursor.execute(*args, **kwargs)
+        return self
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if not row: return None
+        cols = [col[0] for col in self._cursor.description]
+        return dict(zip(cols, row))
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not rows: return []
+        cols = [col[0] for col in self._cursor.description]
+        return [dict(zip(cols, row)) for row in rows]
+    def close(self):
+        pass
+
+class LibsqlConnectionWrapper:
+    def __init__(self, conn):
+        self._conn = conn
+    def cursor(self):
+        return LibsqlDictCursor(self._conn.cursor())
+    def execute(self, *args, **kwargs):
+        cursor = self.cursor()
+        return cursor.execute(*args, **kwargs)
+    def commit(self):
+        self._conn.commit()
+    def close(self):
+        if hasattr(self._conn, 'close'):
+            self._conn.close()
+
 def get_db_connection(region: str):
     """
     Multi-Cloud Database Router: Dynamically routes connections to Local SQLite, Turso, or Supabase.
@@ -71,8 +104,7 @@ def get_db_connection(region: str):
             import libsql_experimental as libsql
             auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
             conn = libsql.connect(db_url, auth_token=auth_token)
-            conn.row_factory = sqlite3.Row
-            return conn
+            return LibsqlConnectionWrapper(conn)
         except ImportError:
             print("WARNING: Turso SDK not installed. Falling back to local DB.")
             
@@ -127,8 +159,7 @@ def get_hr_connection():
             import libsql_experimental as libsql
             auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
             conn = libsql.connect(db_url, auth_token=auth_token)
-            conn.row_factory = sqlite3.Row
-            return conn
+            return LibsqlConnectionWrapper(conn)
         except ImportError:
             print("WARNING: Turso SDK not installed. Falling back to local DB.")
             
