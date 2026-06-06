@@ -85,18 +85,18 @@ export default function Auth() {
           {mode === 'register' && (
             <div className="form-group">
               <label className="form-label">Full Name</label>
-              <input className="form-input" name="name" placeholder="e.g. DJ Sharma" value={form.name} onChange={set('name')} required />
+              <input className="form-input" id="name" name="name" placeholder="e.g. DJ Sharma" value={form.name} onChange={set('name')} required />
             </div>
           )}
 
           <div className="form-group">
             <label className="form-label">Email</label>
-            <input className="form-input" name="email" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required />
+            <input className="form-input" id="email" name="email" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required />
           </div>
 
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" name="password" type="password" placeholder="••••••••••••" value={form.password} onChange={set('password')} required />
+            <input className="form-input" id="password" name="password" type="password" placeholder="••••••••••••" value={form.password} onChange={set('password')} required />
           </div>
 
           <div className="form-group">
@@ -124,7 +124,7 @@ export default function Auth() {
 
           <div className="form-group">
             <label className="form-label">Region (Database Shard)</label>
-            <select className="form-select" name="region" value={form.region} onChange={set('region')}>
+            <select className="form-select" id="region" name="region" value={form.region} onChange={set('region')}>
               <option value="north">🔵 North Shard</option>
               <option value="south">🟢 South Shard</option>
               <option value="east">🔴 East Shard</option>

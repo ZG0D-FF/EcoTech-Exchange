@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../utils/api'
 import { storage } from '../utils/storage'
 import { useNavigate } from 'react-router-dom'
 import DynamicExcelTable from '../components/DynamicExcelTable'
+import {
+  LogIn, LogOut, ArrowLeft, Shield, CalendarDays, Users,
+  ClipboardList, MessageCircle, ScrollText, BarChart3,
+  AlertCircle, Send, Lock
+} from 'lucide-react'
 
 export default function Attendance() {
   const navigate = useNavigate()
@@ -28,6 +34,22 @@ export default function Attendance() {
   const handleLogout = () => {
     storage.clear()
     navigate('/auth')
+  }
+
+  const handleClearCache = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/cache/clear`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + session?.token
+        }
+      });
+      const resData = await res.json();
+      alert(resData.message || resData.detail);
+    } catch (e) {
+      alert("Failed to clear cache.");
+    }
   }
 
   const loadData = async () => {
@@ -61,21 +83,86 @@ export default function Attendance() {
     if (!data.is_admin) return <span>{value}</span>;
 
     // 1. 🔥 Employee Dropdown (Changes those random TBD_ IDs into Real Names!)
-    if (column === 'employee_id' && table !== 'employees') {
+	
+	
+	// 🔥 NEW: Native Date Picker
+    if (column === 'date') {
+      let inputVal = val;
+      // Instantly convert any DD-MM-YYYY text into YYYY-MM-DD for the native calendar picker
+      if (inputVal && inputVal.match(/^\d{2}-\d{2}-\d{4}$/)) {
+        const p = inputVal.split('-');
+        inputVal = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+      
       if (isEditing) {
         return (
-          <select autoFocus value={val} onChange={e => { const newVal = e.target.value; setVal(newVal); setIsEditing(false); if (newVal !== value) handleCellSave(table, id, column, newVal); }} onBlur={() => setIsEditing(false)} style={{ width: '100%', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}>
-            <option value="">Select Employee...</option>
-            {(data.employees || []).map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+          <input
+            id={column}
+            name={column}
+            type="date"
+            autoFocus
+            value={inputVal}
+            onChange={e => setVal(e.target.value)}
+            onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }}
+            onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }}
+            style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
+          />
+        );
+      }
+      return (
+        <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }} title="Click to pick a date">
+          {value || <span style={{opacity: 0.3}}>...</span>}
+        </span>
+      );
+    }
+
+    // 2. 🔥 CUSTOM FEATURE: Month Jan-Dec Native Dropdown
+    if (column === 'month') {
+      const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      
+      if (isEditing) {
+        return (
+          <select
+            id={column}
+            name={column}
+            autoFocus
+            value={val}
+            onChange={e => { 
+              const newVal = e.target.value;
+              setVal(newVal); 
+              setIsEditing(false); 
+              if (newVal !== value) handleCellSave(table, id, column, newVal); 
+            }}
+            onBlur={() => setIsEditing(false)}
+            style={{ width: '100%', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
+          >
+            <option value="">Select Month...</option>
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         );
       }
-      return <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent', color: '#3fb950', fontWeight: 'bold' }}>{value || 'Assign Employee...'}</span>;
+      return <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }}>{value || '...'}</span>;
     }
-	    // 🔥 NEW: Network Verified UTC Clock-In / Clock-Out
+	
+	// 3. 🔥 NEW: Year Dropdown (e.g., if you add a column named 'year')
+    if (column === 'year' || column === 'Year') {
+      const years = ["2024", "2025", "2026", "2027", "2028", "2029", "2030"];
+      if (isEditing) {
+        return (
+          <select id={column} name={column} autoFocus value={val} onChange={e => { const newVal = e.target.value; setVal(newVal); setIsEditing(false); if (newVal !== value) handleCellSave(table, id, column, newVal); }} onBlur={() => setIsEditing(false)} style={{ width: '100%', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}>
+            <option value="">Select Year...</option>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        );
+      }
+      return <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }}>{value || '...'}</span>;
+    }
+    const normalize = (str) => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); 
+	
+	// 3.8. 🔥 CUSTOM FEATURE: Smart Clock-In / Clock-Out (Network UTC + Overtime)
     if (column === 'clock_in' || column === 'clock_out') {
       
-            const handleLogNow = async (e) => {
+           const handleLogNow = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         
@@ -102,48 +189,39 @@ export default function Attendance() {
 
                const emp = (data.employees || []).find(e => e.name === row?.employee_id || e.id === row?.employee_id);
                const requiredHours = parseFloat(emp?.work_hours || emp?.Work_Hours || emp?.['work hours'] || emp?.['Work Hours']) || 8;
-               console.log("3b. Required Hours for Employee:", requiredHours);
 
-               const parseTime = (t) => {
+               const parseTime24 = (t) => {
                   if (!t) return 0;
-                  const parts = t.split(':').map(Number);
+                  const parts = String(t).split(':').map(Number);
                   return (parts[0] || 0) + ((parts[1] || 0)/60) + ((parts[2] || 0)/3600);
                };
 
-               const inHours = parseTime(clockInStr);
-               const outHours = parseTime(utcTime);
+               let inHours = parseTime24(clockInStr);
+               let outHours = parseTime24(utcTime); 
+               
                let workedHours = outHours - inHours;
                if (workedHours < 0) workedHours += 24; 
-               console.log("3c. Worked Hours Calculated:", workedHours);
+               
+               if (workedHours > 12 && inHours < 12) {
+                   workedHours -= 12;
+               }
+
+               console.log("3c. Smart Worked Hours Calculated:", workedHours);
 
                if (workedHours < requiredHours) {
-                   console.log("⚠️ Early clock out detected. Showing confirm dialog...");
                    if (!window.confirm(`⚠️ Early Clock Out!\n\nYou have only worked ${workedHours.toFixed(1)} hours.\nRequired: ${requiredHours} hours.\n\nAre you sure you want to clock out early?`)) {
-                       console.log("🚫 User cancelled early clock out.");
                        setVal('');
                        return; 
                    }
-               } else {
-                   const extraTime = workedHours - requiredHours;
-                   console.log("✅ Overtime calculated:", extraTime);
-                   if (extraTime > 0) {
-                       console.log("💾 Attempting to silently save overtime to database:", extraTime.toFixed(1));
-                       try {
-                           handleCellSave(table, id, 'overtime', extraTime.toFixed(1));
-                           console.log("✅ Overtime saved successfully!");
-                       } catch (saveErr) {
-                           console.error("🚨 ERROR saving overtime to backend:", saveErr);
-                       }
-                   }
                }
+               // 🔥 OVERTIME SAVING IS NOW NATIVELY HANDLED BY THE PYTHON BACKEND ON CLOCK-OUT
             }
             
             console.log("4. Calling handleCellSave for the actual timestamp:", utcTime);
             try {
-               // Wait! If handleCellSave is an async function, we can await it here to see if it hangs!
                const saveResult = handleCellSave(table, id, column, utcTime);
                if (saveResult instanceof Promise) {
-                   console.log("⏳ handleCellSave returned a Promise. Waiting for backend to respond...");
+                   console.log("⏳ handleCellSave returned a Promise. Waiting for backend...");
                    await saveResult;
                }
                console.log("✅ handleCellSave executed successfully!");
@@ -154,6 +232,10 @@ export default function Attendance() {
             console.log("5. Updating UI to show timestamp");
             setVal(utcTime); 
             setIsEditing(false);
+            
+            // 🔥 INSTANT SUCCESS MESSAGE FOR EMPLOYEES!
+            alert(`✅ Action Successful!\nTime logged: ${utcTime}`);
+            
             console.log("🎉 handleLogNow finished completely without crashing!");
 
         } catch (globalErr) {
@@ -165,185 +247,26 @@ export default function Attendance() {
       if (isEditing) {
         return (
           <div style={{ display: 'flex', gap: '4px' }}>
-            <input
-              type="time"
-              autoFocus
-              step="1"
-              value={val}
-              onChange={e => setVal(e.target.value)}
-              onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }}
-              onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }}
-              style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
-            />
-            {/* onMouseDown fires before onBlur, ensuring the button click registers! */}
-            <button type="button" onMouseDown={handleLogNow} style={{ background: '#238636', color: '#fff', border: 'none', padding: '2px 6px', fontSize: '10px', borderRadius: '4px', cursor: 'pointer' }} title="Force UTC Now">
-               UTC
-            </button>
-          </div>
-        );
-      }
-
-      // If cell is empty, show the one-click logging button
-      if (!value || value === '...' || value.trim() === '') {
-         return (
-           <button type="button" onClick={handleLogNow} style={{ background: val === 'Logging...' ? '#8b949e' : '#1f6feb', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '10px', borderRadius: '4px', cursor: 'pointer', width: '100%', fontWeight: 'bold' }}>
-             {val === 'Logging...' ? '⏳ Fetching...' : '⏱️ Log Time'}
-           </button>
-         );
-      }
-
-      // If time is already logged, display it (click to edit)
-      return (
-        <span onClick={() => { setVal(value); setIsEditing(true); }} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent', color: '#a5d6ff', fontWeight: 'bold', fontFamily: "'IBM Plex Mono', monospace" }} title="Click to manually edit">
-          {value}
-        </span>
-      );
-    }
-	    // 🔥 NEW: Native Date Picker
-    if (column === 'date') {
-      let inputVal = val;
-      // Instantly convert any DD-MM-YYYY text into YYYY-MM-DD for the native calendar picker
-      if (inputVal && inputVal.match(/^\d{2}-\d{2}-\d{4}$/)) {
-        const p = inputVal.split('-');
-        inputVal = `${p[2]}-${p[1]}-${p[0]}`;
-      }
-      
-      if (isEditing) {
-        return (
-          <input
-            type="date"
-            autoFocus
-            value={inputVal}
-            onChange={e => setVal(e.target.value)}
-            onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }}
-            onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }}
-            style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
-          />
-        );
-      }
-      return (
-        <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }} title="Click to pick a date">
-          {value || <span style={{opacity: 0.3}}>...</span>}
-        </span>
-      );
-    }
-
-    // 2. 🔥 CUSTOM FEATURE: Month Jan-Dec Native Dropdown
-    if (column === 'month') {
-      const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      
-      if (isEditing) {
-        return (
-          <select
-            autoFocus
-            value={val}
-            onChange={e => { 
-              const newVal = e.target.value;
-              setVal(newVal); 
-              setIsEditing(false); 
-              if (newVal !== value) handleCellSave(table, id, column, newVal); 
-            }}
-            onBlur={() => setIsEditing(false)}
-            style={{ width: '100%', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
-          >
-            <option value="">Select Month...</option>
-            {months.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        );
-      }
-      return <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }}>{value || '...'}</span>;
-    }
-	
-	// 3. 🔥 NEW: Year Dropdown (e.g., if you add a column named 'year')
-    if (column === 'year' || column === 'Year') {
-      const years = ["2024", "2025", "2026", "2027", "2028", "2029", "2030"];
-      if (isEditing) {
-        return (
-          <select autoFocus value={val} onChange={e => { const newVal = e.target.value; setVal(newVal); setIsEditing(false); if (newVal !== value) handleCellSave(table, id, column, newVal); }} onBlur={() => setIsEditing(false)} style={{ width: '100%', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}>
-            <option value="">Select Year...</option>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        );
-      }
-      return <span onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', borderBottom: '1px dashed transparent' }}>{value || '...'}</span>;
-    }
-    const normalize = (str) => str.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); 
-	
-	    // 3.8. 🔥 CUSTOM FEATURE: Smart Clock-In / Clock-Out (Network UTC + Overtime)
-    if (column === 'clock_in' || column === 'clock_out') {
-      
-      const handleLogNow = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        setVal('Logging...');
-        
-        let utcTime = '';
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1500);
-          const res = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC', { signal: controller.signal });
-          clearTimeout(timeoutId);
-          const data = await res.json();
-          utcTime = data.datetime.substring(11, 19);
-        } catch (err) {
-          utcTime = new Date().toISOString().substring(11, 19);
-        }
-
-        // 🔥 CLOCK OUT LOGIC: Check Required Hours & Calculate Overtime
-        if (column === 'clock_out') {
-           const clockInStr = row?.clock_in;
-           if (!clockInStr || clockInStr === '...' || clockInStr.trim() === '') {
-               alert("⚠️ You must Clock In first before you can Clock Out!");
-               setVal('');
-               return;
-           }
-
-           // Find required work hours from Employees table (Admin modifies it there)
-           const emp = (data.employees || []).find(e => e.name === row?.employee_id || e.id === row?.employee_id);
-           const requiredHours = parseFloat(emp?.work_hours || emp?.Work_Hours || emp?.['work hours'] || emp?.['Work Hours']) || 8; // Defaults to 8 hours
-
-           const parseTime = (t) => {
-              if (!t) return 0;
-              const parts = t.split(':').map(Number);
-              return (parts[0] || 0) + ((parts[1] || 0)/60) + ((parts[2] || 0)/3600);
-           };
-
-           const inHours = parseTime(clockInStr);
-           const outHours = parseTime(utcTime);
-           let workedHours = outHours - inHours;
-           if (workedHours < 0) workedHours += 24; // Handle overnight shifts
-
-           if (workedHours < requiredHours) {
-               if (!window.confirm(`⚠️ Early Clock Out!\n\nYou have only worked ${workedHours.toFixed(1)} hours.\nRequired: ${requiredHours} hours.\n\nAre you sure you want to clock out early?`)) {
-                   setVal('');
-                   return; // Cancel clock out
-               }
-           } else {
-               // Calculate extra time and automatically save it to an 'overtime' column!
-               const extraTime = workedHours - requiredHours;
-               if (extraTime > 0) {
-                   handleCellSave(table, id, 'overtime', extraTime.toFixed(1));
-               }
-           }
-        }
-        
-        handleCellSave(table, id, column, utcTime);
-        setVal(utcTime); // Instant visual optimistic update!
-        setIsEditing(false);
-      };
-
-      if (isEditing) {
-        return (
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <input type="time" step="1" autoFocus value={val} onChange={e => setVal(e.target.value)} onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }} onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }} style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }} />
+            <input type="time" id={column} name={column} step="1" autoFocus value={val} onChange={e => setVal(e.target.value)} onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }} onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }} style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }} />
             <button type="button" onMouseDown={handleLogNow} style={{ background: '#238636', color: '#fff', border: 'none', padding: '2px 6px', fontSize: '10px', borderRadius: '4px', cursor: 'pointer' }} title="Force UTC Now">UTC</button>
           </div>
         );
       }
 
       // Optimistic rendering so it stamps instantly without waiting for network backend reload
-      const displayValue = value && value !== '...' ? value : (val && val !== 'Logging...' ? val : null);
+      let displayValue = value && value !== '...' ? value : (val && val !== 'Logging...' ? val : null);
+
+      // 🕒 SMART UTC-TO-LOCAL FORMATTER: If the backend gives us an ugly ISO string, make it beautiful!
+      if (displayValue && String(displayValue).includes('T')) {
+          try {
+              // Ensure JavaScript knows it's pure UTC by appending Z if missing
+              const safeIso = String(displayValue).endsWith('Z') ? displayValue : displayValue + 'Z';
+              const d = new Date(safeIso);
+              if (!isNaN(d.getTime())) {
+                  displayValue = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              }
+          } catch(e) {}
+      }
 
       if (!displayValue) {
          return (
@@ -360,7 +283,236 @@ export default function Attendance() {
       );
     }
 
-        // 4. 🔥 NEW: Aggregated Monthly Salaries in Dashboard
+        // 📅 NATIVE DATE PICKER (Universal Brain for ANY Date Format)
+      if (column === 'from_date' || column === 'to_date' || column === 'date') {
+        
+        // 🧠 UNIVERSAL DATE BRAIN: Converts literally anything to YYYY-MM-DD
+        const parseDateSmart = (raw) => {
+            if (!raw || raw.startsWith('TBD_') || raw === '...') return '';
+            
+            // Clean the string (replace any slashes with dashes)
+            let clean = String(raw).replace(/\//g, '-').trim();
+            
+            // Format 1: DD-MM-YYYY (e.g. 05-12-2026)
+            if (clean.match(/^\d{2}-\d{2}-\d{4}$/)) {
+                const parts = clean.split('-');
+                return `${parts[2]}-${parts[1]}-${parts[0]}`; // Flip to YYYY-MM-DD
+            }
+            // Format 2: YYYY-MM-DD (Already perfect)
+            if (clean.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return clean;
+            }
+            // Format 3: D-M-YYYY (e.g. 5-1-2026) -> Pad with zeros
+            if (clean.match(/^\d{1,2}-\d{1,2}-\d{4}$/)) {
+                const parts = clean.split('-');
+                const d = parts[0].padStart(2, '0');
+                const m = parts[1].padStart(2, '0');
+                return `${parts[2]}-${m}-${d}`;
+            }
+            
+            // Fallback: Let JavaScript try to magically guess weird text like "May 5, 2026"
+            try {
+                const d = new Date(raw);
+                if (!isNaN(d.getTime())) {
+                    return d.toISOString().split('T')[0];
+                }
+            } catch (e) {}
+            
+            return ''; // Fail-safe fallback so the UI never crashes
+        };
+
+        const safeDateForPicker = parseDateSmart(val);
+
+        if (isEditing) {
+          return (
+            <input 
+              id={column}
+              name={column}
+              type="date"
+              value={safeDateForPicker} 
+              autoFocus
+              // We save whatever the native picker spits out (which is guaranteed flawless YYYY-MM-DD)
+              onChange={e => setVal(e.target.value)}
+              onBlur={() => { 
+                setIsEditing(false); 
+                if (val !== value && val !== '') handleCellSave(table, id, column, val); 
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                   setIsEditing(false); 
+                   if (val !== value && val !== '') handleCellSave(table, id, column, val); 
+                }
+              }}
+              style={{ 
+                background: 'transparent', color: '#fff', border: '1px solid #30363d', 
+                borderRadius: '4px', padding: '2px 6px', fontSize: '11px', outline: 'none',
+                colorScheme: 'dark' // Forces the calendar popup to be dark mode!
+              }}
+            />
+          );
+        }
+        
+        return (
+          <span 
+            onClick={() => setIsEditing(true)}
+            style={{ 
+              cursor: 'pointer', 
+              color: val && !val.startsWith('TBD_') && val !== '...' ? '#7ee787' : '#8b949e', 
+              fontWeight: 'bold', borderBottom: '1px dashed #30363d'
+            }}
+            title="Click to pick a date"
+          >
+            {val && !val.startsWith('TBD_') && val !== '...' 
+              ? val 
+              : "📅 Set Date"}
+          </span>
+        );
+      }
+	
+	// 🏖️ PRE-MADE LEAVE TYPES DROPDOWN
+      if (column === 'leave_type') {
+        const leaveTypes = ["Casual Leave", "Sick Leave", "Annual Leave", "Unpaid Leave", "Maternity / Paternity"];
+        
+        if (isEditing) {
+          return (
+            <select
+              value={val && !val.startsWith('TBD_') ? val : ''}
+              autoFocus
+              onChange={e => {
+                setVal(e.target.value);
+                setIsEditing(false);
+                handleCellSave(table, id, column, e.target.value);
+              }}
+              onBlur={() => setIsEditing(false)}
+              style={{ background: '#0d1117', color: '#fff', border: '1px solid #30363d', borderRadius: '4px', padding: '2px 4px', fontSize: '11px', outline: 'none' }}
+            >
+              <option value="" disabled>Select Type...</option>
+              {leaveTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          );
+        }
+        
+        return (
+          <span 
+            onClick={() => setIsEditing(true)}
+            style={{ cursor: 'pointer', color: val && !val.startsWith('TBD_') ? '#a5d6ff' : '#8b949e', borderBottom: '1px dashed #a5d6ff' }}
+          >
+            {val && !val.startsWith('TBD_') ? val : "🏖️ Select Type"}
+          </span>
+        );
+      }
+	
+	// ⚠️ DYNAMIC 2-WEEK NOTICE PERIOD CHECKER
+      if (column === 'notice_check') {
+         if (!row || !row.from_date || row.from_date.startsWith('TBD_')) {
+             return <span style={{ color: '#8b949e', fontSize: '11px' }}>Waiting for date...</span>;
+         }
+         
+         const today = new Date();
+         today.setHours(0, 0, 0, 0); 
+         const leaveDate = new Date(row.from_date);
+         leaveDate.setHours(0, 0, 0, 0);
+         
+         const diffTime = leaveDate - today;
+         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+         
+         if (diffDays < 14) {
+             return (
+                 <span style={{ color: '#f85149', fontWeight: 'bold', fontSize: '11px' }} title="Leaves require at least 14 days notice">
+                     ❌ Warning: Only {diffDays} days notice (14 required)
+                 </span>
+             );
+         } else {
+             return (
+                 <span style={{ color: '#3fb950', fontWeight: 'bold', fontSize: '11px' }}>
+                     ✅ Good: {diffDays} days notice
+                 </span>
+             );
+         }
+      }
+	
+	// 🔒 BEAUTIFY BLOCKCHAIN HASHES
+      if (column === 'previous_hash' || column === 'current_hash') {
+         if (!value || value === '...' || value === 'None') return <span style={{ color: '#8b949e' }}>None</span>;
+         if (typeof value === 'string' && value.startsWith('GENESIS')) return <span style={{ color: '#3fb950', fontWeight: 'bold' }}>🌱 GENESIS BLOCK</span>;
+         
+         const hashStr = String(value);
+         const displayHash = hashStr.length > 8 ? hashStr.substring(0, 8) + '...' : hashStr;
+         return (
+             <span title={`Full Hash: ${hashStr}`} style={{ background: '#161b22', color: '#8b949e', padding: '2px 6px', borderRadius: '4px', border: '1px solid #30363d', fontFamily: 'monospace', fontSize: '10px' }}>
+                🔒 {displayHash}
+             </span>
+         );
+      }
+
+    // 🕵️ TRANSLATE CHANGED_BY ULID INTO EMPLOYEE NAME
+      if (column === 'changed_by') {
+         if (!value || (typeof value === 'string' && value.startsWith('TBD_'))) return <span>{value}</span>;
+         
+         const auditChangedByEmp = (data.employees || []).find(e => e.id === value || e.name === value);
+         return (
+             <span style={{ color: '#c9d1d9', fontWeight: 'bold' }}>
+                {auditChangedByEmp ? `👤 ${auditChangedByEmp.name}` : value}
+             </span>
+         );
+      }
+
+    // 📅 TRANSLATE ATTENDANCE_ID ULID INTO TARGET CONTEXT
+      if (column === 'attendance_id') {
+         if (!value || (typeof value === 'string' && value.startsWith('TBD_'))) return <span>{value}</span>;
+         
+         const auditTargetRecord = (data.attendance || []).find(a => a.id === value);
+         if (auditTargetRecord) {
+             const auditTargetEmp = (data.employees || []).find(e => e.id === auditTargetRecord.employee_id || e.name === auditTargetRecord.employee_id);
+             return (
+                 <span style={{ color: '#a5d6ff', borderBottom: '1px dotted #a5d6ff' }} title={`Record ID: ${value}`}>
+                    🎯 {auditTargetEmp ? auditTargetEmp.name : 'Unknown'} ({auditTargetRecord.date})
+                 </span>
+             );
+         }
+         return <span>{value}</span>;
+      }
+	
+	      // 🧑‍💼 RENDER EMPLOYEE ID AS A REAL NAME
+      if (column === 'employee_id') {
+        // Look up the name matching the ID
+        const matchingEmp = (data.employees || []).find(e => e.id === value || e.name === value);
+        const displayName = matchingEmp ? matchingEmp.name : value;
+        
+        if (isEditing) {
+          return (
+            <select
+              value={val && !val.startsWith('TBD_') ? val : ''}
+              autoFocus
+              onChange={e => {
+                setVal(e.target.value);
+                setIsEditing(false);
+                if (e.target.value !== value) handleCellSave(table, id, column, e.target.value);
+              }}
+              onBlur={() => setIsEditing(false)}
+              style={{ background: '#0d1117', color: '#fff', border: '1px solid #30363d', borderRadius: '4px', padding: '2px 4px', fontSize: '11px', outline: 'none' }}
+            >
+              <option value="" disabled>Select Employee...</option>
+              {(data.employees || []).map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          );
+        }
+        
+        return (
+          <span 
+             onClick={() => setIsEditing(true)} 
+             style={{ cursor: 'pointer', color: '#a5d6ff', fontWeight: 'bold', borderBottom: '1px dashed #30363d' }}
+          >
+             {displayName || "..."}
+          </span>
+        );
+      }
+	  
+	// 4. 🔥 NEW: Aggregated Monthly Salaries in Dashboard
     // If we are looking at the Employees table, show a sub-row breakdown of all their months!
     if (table === 'employees' && normalize(column) === 'salary') {
       const employeeOverrides = (data.overrides || []).filter(o => o.employee_id === row?.name || o.employee_id === row?.id);
@@ -388,7 +540,8 @@ export default function Attendance() {
       }
       return <span style={{ opacity: 0.5, fontSize: '11px' }}>No data in Payroll tab</span>;
     }
-            // 5. MAGIC RELATIONAL LINKAGE CHECKER
+    
+	// 5. MAGIC RELATIONAL LINKAGE CHECKER
     const empTableCols = data.employees && data.employees.length > 0 ? Object.keys(data.employees[0]) : [];
     // 🔥 We explicitly EXCLUDE "salary", "present", and "absent" from being hijacked globally!
     const matchedEmpCol = empTableCols.find(c => 
@@ -412,6 +565,8 @@ export default function Attendance() {
            return (
              <>
                <input 
+                 id={column}
+                 name={column}
                  list={uniqueVals.length > 0 ? listId : undefined}
                  autoComplete="off"
                  autoFocus value={val} onChange={e => setVal(e.target.value)}
@@ -432,9 +587,12 @@ export default function Attendance() {
         );
       }
     }
-                // 6. 🔥 MASTER ATTENDANCE AGGREGATOR (Present / Absent / Overtime)
+                 // 6. 🔥 MASTER ATTENDANCE AGGREGATOR (Sync-Brain & Dual-Brain)
     const normalizedCol = normalize(column);
-    if (column === 'Present' || column === 'Absent' || normalizedCol === 'overtime') {
+    const isPresentCol = column === 'Present' || column === 'present_override';
+    const isAbsentCol = column === 'Absent' || column === 'absent_override';
+    
+    if (isPresentCol || isAbsentCol || normalizedCol === 'overtime') {
       
       const parseDateInfo = (dateStr, existingMonth, existingYear) => {
         let m = existingMonth || ''; let y = existingYear || '';
@@ -450,6 +608,15 @@ export default function Attendance() {
            } catch(e) {}
         }
         return `${m} ${y}`.trim() || 'Unknown Month';
+      };
+      // 🧠 Helper to cleanly deduce Presence/Absence for math (Respects manual overrides over OCR status)
+      const checkStatus = (rowObj, type) => {
+         const val = type === 'P' ? rowObj.Present : rowObj.Absent;
+         if (val !== undefined && val !== null && val !== '...' && val !== '') {
+             return parseInt(val) === 1; // Trust the manual override!
+         }
+         const rawStatus = rowObj.status?.toLowerCase();
+         return type === 'P' ? rawStatus === 'present' : rawStatus === 'absent'; // Fallback to OCR data
       };
 
       // A) EMPLOYEES DASHBOARD: Show Sub-Row Monthly Totals
@@ -482,7 +649,7 @@ export default function Attendance() {
         return <span style={{ opacity: 0.5, fontSize: '11px' }}>0 {normalizedCol === 'overtime' ? 'Hrs' : 'Days'}</span>;
       }
 
-      // B) PAYROLL OVERRIDES: Pull single total for that row's specific month AND year!
+            // B) MONTHLY / PAYROLL TABLES: Single total pill for that row's specific month
       if (table !== 'attendance' && table !== 'leave_requests' && table !== 'leave_balance') {
         const targetMonth = row?.month?.toLowerCase();
         const targetYear = (row?.year || row?.Year)?.toString();
@@ -494,33 +661,54 @@ export default function Attendance() {
            const mName = timeLabel.split(' ')[0]?.toLowerCase();
            const yName = timeLabel.split(' ')[1];
 
-           const monthMatches = targetMonth && mName === targetMonth;
-           const yearMatches = !targetYear || yName === targetYear;
-
-           if (monthMatches && yearMatches) {
+           // Match the row's specific month and year
+           if ((!targetMonth || mName === targetMonth) && (!targetYear || yName === targetYear)) {
              if (column === 'Present' && (parseInt(a.Present) === 1 || a.status?.toLowerCase() === 'present')) total++;
              if (column === 'Absent' && (parseInt(a.Absent) === 1 || a.status?.toLowerCase() === 'absent')) total++;
              if (normalizedCol === 'overtime') total += (parseFloat(a.overtime) || 0);
            }
         });
 
+        // Fallback to manual override if typed, otherwise show calculated sum
+        const displayValue = (value !== undefined && value !== null && value !== '...' && value !== '') ? parseFloat(value) : total;
+        const displayLabel = `${row?.month || 'Month'} ${row?.year || row?.Year || ''}`.trim();
+
+        // 🔥 UI FIX: Render exactly like the dark pill box in the Dashboard!
         return (
-          <span style={{ color: column === 'Present' ? '#3fb950' : (normalizedCol === 'overtime' ? '#a5d6ff' : '#ff7b72'), fontWeight: 'bold', fontSize: '12px' }} title="Magically pulled from Attendance">
-             {total > 0 ? total.toFixed(normalizedCol === 'overtime' ? 1 : 0) : <span style={{opacity:0.3}}>...</span>} <span style={{ fontSize: '8px', opacity: 0.5 }}>🔗</span>
-          </span>
+          <div style={{ minWidth: '120px', fontSize: '10px', color: column === 'Present' ? '#3fb950' : (normalizedCol === 'overtime' ? '#a5d6ff' : '#ff7b72'), background: '#161b22', padding: '3px 6px', borderRadius: '4px', border: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#8b949e' }}>{displayLabel}</span> 
+            <span style={{ fontWeight: 'bold', cursor: 'pointer' }} onClick={() => setIsEditing(true)} title="Click to manually override">
+              {displayValue > 0 ? displayValue.toFixed(normalizedCol === 'overtime' ? 1 : 0) : '0'} {normalizedCol === 'overtime' ? 'Hrs' : 'Days'}
+            </span>
+          </div>
         );
       }
 
-      // C) NATIVE TABLES (Attendance & Leaves): Show the Interactive Toggle UI!
-      // If it's overtime, we deliberately bypass this so it falls down to your generic text input!
+            // C) NATIVE TABLES (Attendance & Leaves): Show the Interactive Toggle UI!
       if (normalizedCol !== 'overtime') {
-          const isTrue = parseInt(value) === 1;
+          // 🔥 SMART SYNC: Check OCR status if manual override is blank
+          let isTrue = false;
+          if (value !== undefined && value !== null && value !== '' && value !== '...') {
+              isTrue = parseInt(value) === 1;
+          } else {
+              const rawStatus = row?.status?.toLowerCase();
+              if (column === 'Present' && rawStatus === 'present') isTrue = true;
+              if (column === 'Absent' && rawStatus === 'absent') isTrue = true;
+          }
+
           const otherCol = column === 'Present' ? 'Absent' : 'Present';
 
           const handleToggle = async (e) => {
             e.preventDefault(); e.stopPropagation();
-            if (!isTrue) { await api.editCell(table, id, otherCol, "0"); handleCellSave(table, id, column, "1"); } 
-            else { handleCellSave(table, id, column, "0"); }
+            if (!isTrue) { 
+                await api.editCell(table, id, otherCol, "0"); 
+                handleCellSave(table, id, column, "1"); 
+                // 🔥 DUAL LINK: Toggling button updates the Status text
+                handleCellSave(table, id, 'status', column === 'Present' ? 'Present' : 'Absent');
+            } 
+            else { 
+                handleCellSave(table, id, column, "0"); 
+            }
           };
 
           return (
@@ -528,6 +716,56 @@ export default function Attendance() {
               {column === 'Present' ? '✓ Present' : '✗ Absent'}
             </button>
           );
+      } 
+      
+      // 🔥 FIX: IF IT IS OVERTIME, DYNAMICALLY CALCULATE IT FOR ALL ROWS (Even past OCR data!)
+      if (table === 'attendance' && normalizedCol === 'overtime') {
+          // 1. If it was already saved manually in the database, just show it!
+          if (value && value !== '...' && parseFloat(value) > 0) {
+              return <span style={{ color: '#a5d6ff', fontWeight: 'bold' }}>{value}</span>;
+          }
+          
+                    // 2. If it is empty, magically calculate it on the fly from the raw clock times!
+          const inStr = row?.clock_in;
+          const outStr = row?.clock_out;
+          
+          if (inStr && outStr && inStr !== '...' && outStr !== '...') {
+             const emp = (data.employees || []).find(e => e.name === row?.employee_id || e.id === row?.employee_id);
+             const requiredHours = parseFloat(emp?.work_hours || emp?.Work_Hours || emp?.['work hours'] || emp?.['Work Hours']) || 8;
+             
+             // 🧠 SMART AM/PM OCR HEURISTIC 
+             const parseTimeSmart = (t) => {
+                const parts = String(t).split(':').map(Number);
+                return (parts[0] || 0) + ((parts[1] || 0)/60);
+             };
+             
+             let inHours = parseTimeSmart(inStr);
+             let outHours = parseTimeSmart(outStr);
+             
+             // Rule A: If you clock in between 1:00 and 5:59, it's definitely PM
+             if (inHours >= 1 && inHours < 6) inHours += 12;
+             
+             // Rule B: If clock-out is a smaller number than clock-in, it's definitely PM
+             if (outHours < inHours && outHours + 12 > inHours) outHours += 12;
+             
+             // Rule C: If the shift looks ridiculously short (< 4 hours), they probably clocked out in the PM
+             if (outHours - inHours > 0 && outHours - inHours < 4) outHours += 12;
+
+             let workedHours = outHours - inHours;
+             if (workedHours < 0) workedHours += 24; // Handle actual overnight shifts
+             
+             const extraTime = workedHours - requiredHours;
+             
+             if (extraTime > 0) {
+                 return (
+                     <span style={{ color: '#a5d6ff', fontWeight: 'bold', borderBottom: '1px dotted #a5d6ff' }} title={`Auto-Calculated! Worked ${workedHours.toFixed(1)}h (Required: ${requiredHours}h)`}>
+                         {extraTime.toFixed(1)}
+                     </span>
+                 );
+             }
+          }
+          // If no clock out time exists, or no overtime worked, show the default empty state
+          return <span style={{ opacity: 0.3 }}>...</span>;
       }
     }
         // 7. Default Generic Text Input
@@ -547,7 +785,32 @@ export default function Attendance() {
             type={type}
             value={val}
             onChange={e => setVal(e.target.value)}
-            onBlur={() => { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); }}
+                        onBlur={() => { 
+              setIsEditing(false); 
+              if (val !== value) { 
+                handleCellSave(table, id, column, val);
+                // 🔥 DUAL LINK: Typing Status updates the buttons
+                if (column === 'status') {
+                  const s = val.toLowerCase();
+                  if (s === 'present') { handleCellSave(table, id, 'Present', '1'); handleCellSave(table, id, 'Absent', '0'); }
+                  else if (s === 'absent') { handleCellSave(table, id, 'Present', '0'); handleCellSave(table, id, 'Absent', '1'); }
+                }
+              } 
+            }}
+            onKeyDown={e => { 
+              if (e.key === 'Enter') { 
+                setIsEditing(false); 
+                if (val !== value) { 
+                  handleCellSave(table, id, column, val);
+                  // 🔥 DUAL LINK: Typing Status updates the buttons
+                  if (column === 'status') {
+                    const s = val.toLowerCase();
+                    if (s === 'present') { handleCellSave(table, id, 'Present', '1'); handleCellSave(table, id, 'Absent', '0'); }
+                    else if (s === 'absent') { handleCellSave(table, id, 'Present', '0'); handleCellSave(table, id, 'Absent', '1'); }
+                  }
+                } 
+              } 
+            }}
             onKeyDown={e => { if (e.key === 'Enter') { setIsEditing(false); if (val !== value) handleCellSave(table, id, column, val); } }}
             style={{ width: '100%', boxSizing: 'border-box', background: '#0d1117', color: '#c9d1d9', border: '1px solid #58a6ff', padding: '2px 4px', fontSize: '11px', fontFamily: 'inherit' }}
           />
@@ -565,9 +828,22 @@ export default function Attendance() {
 
   const getAv = (i) => ['av-a','av-b','av-c','av-d','av-e'][i % 5]
   
+  // 🔥 Identify exactly WHO triggered the tampering alerts!
   const brokenChains = new Set()
+  const culprits = new Set()
+  
   ;(data.audit_logs || []).forEach(al => {
-    if (al.previous_hash === 'BROKEN_PREVIOUS_HASH') brokenChains.add(al.id)
+    if (al.previous_hash === 'BROKEN_PREVIOUS_HASH') {
+      brokenChains.add(al.id);
+      
+      // Look up the employee's name using their ID
+      const emp = (data.employees || []).find(e => e.id === al.changed_by);
+      if (emp) {
+         culprits.add(emp.name.split(' ')[0]); // Grab just their first name to keep the UI clean
+      } else {
+         culprits.add(al.changed_by.substring(0, 5)); // Fallback to ID if name is missing
+      }
+    }
   })
 
   const sendMsg = async () => {
@@ -583,189 +859,511 @@ export default function Attendance() {
     }
   }
 
+
+  // ─── Animation Variants ──────────────────────────────────────────────────
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.07, delayChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1, y: 0,
+      transition: { type: 'spring', stiffness: 100, damping: 18 }
+    }
+  };
+
+  const tabContentVariants = {
+    hidden: { opacity: 0, y: 14 },
+    visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 20 } },
+    exit:   { opacity: 0, y: -8, transition: { duration: 0.15 } }
+  };
+
+  // ─── Shared input/label style (used in leave form) ───────────────────────
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.04)',
+    color: '#f0f4ff',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: '6px',
+    padding: '7px 10px',
+    fontFamily: 'inherit',
+    fontSize: '12px',
+    outline: 'none',
+    colorScheme: 'dark',
+    transition: 'border-color 0.2s, box-shadow 0.2s',
+  };
+  const labelStyle = { fontSize: '10px', color: '#8892b0', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: '600', marginBottom: '4px', display: 'block' };
+
   return (
-    <div style={{ padding: '1rem 0', maxWidth: '900px', margin: '0 auto', fontFamily: "'IBM Plex Mono', monospace" }}>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      style={{ padding: '1.25rem 0', maxWidth: '960px', margin: '0 auto', fontFamily: "'Inter', -apple-system, sans-serif" }}
+    >
+      {/* ── Injected CSS Overrides ── */}
       <style>{`
-        .hr-tabs { display:flex; gap:0; border-bottom:0.5px solid #30363d; margin-bottom:1.5rem; overflow-x:auto }
-        .hr-tab { padding:8px 18px; font-size:13px; cursor:pointer; border:none; background:none; color:#8b949e; font-family:'IBM Plex Mono',monospace; border-bottom:2px solid transparent; transition:all .15s; white-space:nowrap }
-        .hr-tab.active { color:#c9d1d9; border-bottom:2px solid #58a6ff; font-weight:500 }
-        .hr-card { background:#0d1117; border:0.5px solid #30363d; border-radius:8px; padding:1rem 1.25rem; margin-bottom:12px }
-        .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:1.5rem }
-        .stat { background:#161b22; border-radius:6px; padding:12px 14px; border:1px solid #30363d }
-        .stat-val { font-size:22px; font-weight:500; color:#c9d1d9 }
-        .stat-lbl { font-size:11px; color:#8b949e; margin-top:2px }
-        table { width:100%; border-collapse:collapse; font-size:12px }
-        th { text-align:left; padding:8px 10px; font-size:11px; color:#8b949e; border-bottom:0.5px solid #30363d; font-weight:500 }
-        td { padding:8px 10px; border-bottom:0.5px solid #30363d; color:#c9d1d9; vertical-align:middle }
-        tr:hover td { background:#161b22 }
-        .av { width:28px; height:28px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:11px; font-weight:500 }
-        .av-a { background:#238636; color:#fff } .av-b { background:#1f6feb; color:#fff } .av-c { background:#9e6a03; color:#fff } .av-d { background:#8957e5; color:#fff } .av-e { background:#da3633; color:#fff }
-        .mono { font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8b949e }
-        .msg-wrap { max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:4px 0 }
-        .msg { padding:8px 12px; border-radius:6px; max-width:75%; font-size:12px; line-height:1.5 }
-        .msg-out { background:#1f6feb; color:#fff; align-self:flex-end }
-        .msg-in { background:#161b22; color:#c9d1d9; align-self:flex-start; border:1px solid #30363d }
-        .msg-meta { font-size:10px; opacity:.6; margin-top:3px }
-        .edit-btn { background:none; border:0.5px solid #30363d; border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; color:#8b949e; font-family:'IBM Plex Mono',monospace }
-        .edit-btn:hover { background:#161b22; color:#c9d1d9 }
-        .pill { display:inline-block; padding:1px 7px; border-radius:20px; font-size:10px; border:0.5px solid #30363d; color:#8b949e }
-        .section-hdr { font-size:13px; font-weight:500; color:#c9d1d9; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between }
-        .alert-banner { background:#da363322; border:0.5px solid #f85149; border-radius:6px; padding:8px 12px; font-size:12px; color:#ff7b72; margin-bottom:12px; display:flex; align-items:center; gap:8px }
-        .month-picker { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; padding:6px 12px; border-radius:6px; font-family:'IBM Plex Mono',monospace; font-size:12px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500&display=swap');
+        .hr-tabs { display:flex; gap:0; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:1.75rem; overflow-x:auto; }
+        .hr-tab { padding:9px 20px; font-size:0.8rem; cursor:pointer; border:none; background:none; color:#4d5672; font-family:'Inter',sans-serif; font-weight:500; border-bottom:2px solid transparent; transition:all 0.2s; white-space:nowrap; letter-spacing:0.01em; }
+        .hr-tab:hover { color:#8892b0; }
+        .hr-tab.active { color:#f0f4ff; border-bottom:2px solid #00d296; }
+        .hr-card { background:rgba(10,13,26,0.65); backdrop-filter:blur(16px) saturate(180%); -webkit-backdrop-filter:blur(16px) saturate(180%); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:1rem 1.25rem; margin-bottom:12px; box-shadow:0 4px 24px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.04); transition:border-color 0.2s; }
+        .hr-card:hover { border-color:rgba(255,255,255,0.09); }
+        .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:1.75rem; }
+        .stat { background:rgba(10,13,26,0.65); backdrop-filter:blur(16px); border-radius:10px; padding:14px 16px; border:1px solid rgba(255,255,255,0.06); box-shadow:0 4px 24px rgba(0,0,0,0.4); transition:all 0.25s; }
+        .stat:hover { border-color:rgba(0,210,150,0.15); box-shadow:0 4px 24px rgba(0,0,0,0.4),0 0 24px rgba(0,210,150,0.05); }
+        .stat-val { font-size:1.5rem; font-weight:700; color:#f0f4ff; letter-spacing:-0.03em; }
+        .stat-lbl { font-size:0.68rem; color:#4d5672; margin-top:3px; text-transform:uppercase; letter-spacing:0.07em; }
+        table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+        th { text-align:left; padding:10px 12px; font-size:0.68rem; color:#4d5672; border-bottom:1px solid rgba(255,255,255,0.06); font-weight:600; text-transform:uppercase; letter-spacing:0.07em; }
+        td { padding:9px 12px; border-bottom:1px solid rgba(255,255,255,0.03); color:#f0f4ff; vertical-align:middle; }
+        tr:hover td { background:rgba(255,255,255,0.02); }
+        .av { width:30px; height:30px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.65rem; font-weight:700; }
+        .av-a { background:linear-gradient(135deg,#00d296,#00aaff); color:#050810; }
+        .av-b { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; }
+        .av-c { background:linear-gradient(135deg,#f0a500,#f59e0b); color:#050810; }
+        .av-d { background:linear-gradient(135deg,#8b5cf6,#ec4899); color:#fff; }
+        .av-e { background:linear-gradient(135deg,#f85149,#ef4444); color:#fff; }
+        .mono { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#8892b0; }
+        .msg-wrap { max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:4px 0; }
+        .msg { padding:8px 12px; border-radius:8px; max-width:75%; font-size:0.8rem; line-height:1.5; }
+        .msg-out { background:linear-gradient(135deg,#6366f1,#7c3aed); color:#fff; align-self:flex-end; }
+        .msg-in  { background:rgba(255,255,255,0.04); color:#f0f4ff; align-self:flex-start; border:1px solid rgba(255,255,255,0.07); }
+        .msg-meta { font-size:0.62rem; opacity:0.55; margin-top:3px; font-family:'JetBrains Mono',monospace; }
+        .edit-btn { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:5px; padding:4px 10px; font-size:0.72rem; cursor:pointer; color:#8892b0; font-family:'Inter',sans-serif; font-weight:500; transition:all 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+        .edit-btn:hover { background:rgba(255,255,255,0.09); color:#f0f4ff; border-color:rgba(255,255,255,0.14); transform:scale(1.02); box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+        .edit-btn:active { transform:scale(0.98); }
+        .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:0.68rem; border:1px solid rgba(255,255,255,0.08); color:#8892b0; }
+        .section-hdr { font-size:0.8125rem; font-weight:600; color:#f0f4ff; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; letter-spacing:-0.01em; }
+        .alert-banner { background:rgba(248,81,73,0.08); border:1px solid rgba(248,81,73,0.2); border-radius:8px; padding:10px 14px; font-size:0.8rem; color:#f85149; margin-bottom:14px; display:flex; align-items:center; gap:8px; backdrop-filter:blur(8px); }
+        .month-picker { background:rgba(255,255,255,0.04); color:#f0f4ff; border:1px solid rgba(255,255,255,0.08); padding:5px 10px; border-radius:5px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; outline:none; cursor:pointer; transition:all 0.2s; }
+        .month-picker:focus { border-color:#00d296; box-shadow:0 0 0 3px rgba(0,210,150,0.1); }
+        .month-picker option { background:#0a0d1a; }
       `}</style>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div>
-          <div style={{ fontSize: '18px', fontWeight: 500, color: '#c9d1d9' }}>EcoTech HR</div>
-          <div style={{ fontSize: '12px', color: '#8b949e' }}>Attendance · Leave · Messaging · Audit Trail</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-          <div className="av av-a" style={{ cursor: 'pointer' }} onClick={() => setShowDropdown(!showDropdown)}>
-            {session?.name ? session.name.substring(0,2).toUpperCase() : 'US'}
-          </div>
-          <div>
-            <div style={{ fontSize: '12px', fontWeight: 500 }}>{session?.name || 'User'}</div>
-            <div style={{ fontSize: '10px', color: '#8b949e' }}>{session?.role || 'user'} role</div>
-          </div>
-          {showDropdown && (
-            <div style={{ position: 'absolute', top: '100%', right: 0, background: '#161b22', border: '1px solid #30363d', borderRadius: '6px', padding: '4px', marginTop: '4px', zIndex: 10, minWidth: '100px' }}>
-              <button className="edit-btn" style={{ width: '100%', textAlign: 'left', border: 'none' }} onClick={handleLogout}>Logout</button>
+      {/* ── Header ── */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}
+      >
+        <motion.div variants={itemVariants}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #00d296, #00aaff)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 20px rgba(0,210,150,0.3)',
+            }}>
+              <BarChart3 size={18} strokeWidth={2} color="#050810" />
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="hr-tabs">
-        <button className={`hr-tab ${tab === 'monthly' ? 'active' : ''}`} onClick={() => setTab('monthly')}>Monthly</button>
-        {data.is_admin && <button className={`hr-tab ${tab === 'dashboard' ? 'active' : ''}`} onClick={() => setTab('dashboard')}>Dashboard</button>}
-        <button className={`hr-tab ${tab === 'attendance' ? 'active' : ''}`} onClick={() => setTab('attendance')}>Attendance</button>
-        <button className={`hr-tab ${tab === 'leaves' ? 'active' : ''}`} onClick={() => setTab('leaves')}>Leaves</button>
-        <button className={`hr-tab ${tab === 'messages' ? 'active' : ''}`} onClick={() => setTab('messages')}>Messages</button>
-        <button className={`hr-tab ${tab === 'auditlog' ? 'active' : ''}`} onClick={() => setTab('auditlog')}>Auditlog</button>
-      </div>
-
-      {error && <div className="alert-banner">{error}</div>}
-
-            {tab === 'monthly' && (
-        <div>
-          <div className="section-hdr">
-            Payroll Overrides (100% Dynamic)
-            <select 
-              className="month-picker"
-              value={monthStr}
-              onChange={(e) => setMonthStr(e.target.value)}
-              style={{ background: '#0d1117', color: '#c9d1d9', border: '1px solid #30363d', padding: '6px 12px', borderRadius: '6px', fontFamily: "'IBM Plex Mono', monospace" }}
-            >
-              <option value="">All Months (Show Everything)</option>
-              {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
-                      <DynamicExcelTable 
-            tableName="payroll_overrides" 
-            tableData={(data.overrides || []).filter(o => !monthStr || o.month === monthStr || o.month?.startsWith('TBD_'))} 
-            reloadData={loadData} 
-            EditableCell={EditableCell} 
-            sumColumns={['Present', 'Absent', 'Salary_']} 
-          />
-          </div>
-          <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '8px' }}>
-            * Note: This allows direct manipulation of the payroll_overrides table via the Dynamic Excel Grid.
-          </div>
-        </div>
-      )}
-
-      {tab === 'dashboard' && (
-        <div>
-          <div className="stat-grid">
-            <div className="stat"><div className="stat-val">{(data.employees||[]).length}</div><div className="stat-lbl">Total employees</div></div>
-            <div className="stat"><div className="stat-val" style={{ color: '#3fb950' }}>{(data.attendance||[]).length}</div><div className="stat-lbl">Total attendance records</div></div>
-            <div className="stat"><div className="stat-val" style={{ color: '#ff7b72' }}>{brokenChains.size}</div><div className="stat-lbl">Flagged changes</div></div>
-          </div>
-
-          <div className="section-hdr">Employees Database (100% Dynamic)</div>
-          <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <DynamicExcelTable tableName="employees" tableData={data.employees} reloadData={loadData} EditableCell={EditableCell} />
-          </div>
-        </div>
-      )}
-
-      {tab === 'attendance' && (
-        <div>
-          <div className="section-hdr">Daily Attendance Register (100% Dynamic)</div>
-          <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
-             <DynamicExcelTable tableName="attendance" tableData={data.attendance} reloadData={loadData} EditableCell={EditableCell} />
-          </div>
-        </div>
-      )}
-
-      {tab === 'leaves' && (
-        <div>
-          <div className="section-hdr">Leave requests (100% Dynamic)</div>
-          <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <DynamicExcelTable tableName="leave_requests" tableData={data.leave_requests} reloadData={loadData} EditableCell={EditableCell} />
-          </div>
-        </div>
-      )}
-
-      {tab === 'auditlog' && (
-        <div>
-          <div className="section-hdr">
-            Tamper-proof audit log (100% Dynamic)
-          </div>
-          <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <DynamicExcelTable tableName="attendance_audit" tableData={data.audit_logs} reloadData={loadData} EditableCell={EditableCell} />
-          </div>
-        </div>
-      )}
-
-      {tab === 'messages' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '12px' }}>
-          <div>
-            <div style={{ fontSize: '11px', color: '#8b949e', marginBottom: '8px' }}>Employees</div>
-            {(data.employees || []).map((e, i) => (
-              <div 
-                key={i} 
-                onClick={() => setConvIdx(i)} 
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 8px', borderRadius: '6px', cursor: 'pointer', background: convIdx === i ? '#161b22' : 'none' }}
-              >
-                <div className={`av ${getAv(i)}`} style={{ width: '28px', height: '28px', fontSize: '10px', flexShrink: 0 }}>{e.name.substring(0,2).toUpperCase()}</div>
-                <div style={{ flex: 1, minWidth: 0, fontSize: '12px', fontWeight: 500 }}>{e.name}</div>
+            <div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#f0f4ff', letterSpacing: '-0.02em' }}>EcoTech HR</div>
+              <div style={{ fontSize: '0.7rem', color: '#4d5672', display: 'flex', gap: '8px', marginTop: '1px' }}>
+                {[['attendance', 'Attendance'], ['leaves', 'Leaves'], ['messages', 'Messages'], ['auditlog', 'Auditlog']].map(([t, label]) => (
+                  <span key={t} onClick={() => setTab(t)} style={{ cursor: 'pointer', transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.target.style.color = '#00d296'} onMouseLeave={e => e.target.style.color = '#4d5672'}>
+                    {label}
+                  </span>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-          <div className="hr-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '320px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 500, borderBottom: '0.5px solid #30363d', paddingBottom: '8px' }}>
-              {data.employees[convIdx]?.name}
+        </motion.div>
+
+        <motion.div variants={itemVariants} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button className="edit-btn" onClick={() => navigate(-1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <ArrowLeft size={12} strokeWidth={2} /> Return
+          </button>
+          {data.is_admin && (
+            <button className="edit-btn" onClick={handleClearCache} style={{ color: '#00d296', borderColor: 'rgba(0,210,150,0.25)', background: 'rgba(0,210,150,0.07)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <AlertCircle size={12} strokeWidth={1.75} /> Clear Cache
+            </button>
+          )}
+          <button className="edit-btn" onClick={handleLogout} style={{ color: '#f85149', borderColor: 'rgba(248,81,73,0.25)', background: 'rgba(248,81,73,0.07)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <Shield size={12} strokeWidth={1.75} /> Sign Out
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginLeft: '6px', borderLeft: '1px solid rgba(255,255,255,0.06)', paddingLeft: '14px' }}>
+            <div className="av av-a">
+              {session?.name ? session.name.substring(0, 2).toUpperCase() : 'US'}
             </div>
-            <div className="msg-wrap">
-              {(data.messages || []).filter(m => m.sender_id === data.employees[convIdx]?.id || m.receiver_id === data.employees[convIdx]?.id).map((m, i) => (
-                <div key={i} className={`msg ${m.sender_id === data.employees[convIdx]?.id ? 'msg-in' : 'msg-out'}`}>
-                  {m.body}
-                  <div className="msg-meta">{new Date(m.sent_at).toLocaleTimeString()}</div>
-                </div>
-              ))}
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#f0f4ff', letterSpacing: '-0.01em' }}>{session?.name || 'User'}</div>
+              <div style={{ fontSize: '0.65rem', color: '#4d5672', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{session?.role || 'user'}</div>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
-              <input 
-                type="text" 
-                name="msgInput"
-                value={msgInput}
-                onChange={e => setMsgInput(e.target.value)}
-                placeholder="Type a message..." 
-                style={{ flex: 1, fontSize: '12px', padding: '6px 10px', background: '#0d1117', border: '1px solid #30363d', color: '#c9d1d9', borderRadius: '4px' }}
-                onKeyDown={e => e.key === 'Enter' && sendMsg()}
-              />
-              <button className="edit-btn" onClick={sendMsg} style={{ padding: '6px 12px' }}>Send</button>
-            </div>
-            <div style={{ fontSize: '10px', color: '#8b949e' }}>Messages are Fernet-encrypted in DB.</div>
           </div>
-        </div>
+        </motion.div>
+      </motion.div>
+
+      {/* ── Tab Navigation ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, type: 'spring', stiffness: 100 }}
+        className="hr-tabs"
+      >
+        {[
+          { key: 'monthly',    label: 'Monthly',    icon: CalendarDays },
+          ...(data.is_admin ? [{ key: 'dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
+          { key: 'attendance', label: 'Attendance', icon: ClipboardList },
+          { key: 'leaves',     label: 'Leaves',     icon: CalendarDays },
+          { key: 'messages',   label: 'Messages',   icon: MessageCircle },
+          { key: 'auditlog',   label: 'Auditlog',   icon: ScrollText },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            className={`hr-tab ${tab === key ? 'active' : ''}`}
+            onClick={() => setTab(key)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Icon size={13} strokeWidth={1.75} />
+            {label}
+          </button>
+        ))}
+      </motion.div>
+
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+          className="alert-banner"
+        >
+          <AlertCircle size={14} strokeWidth={2} /> {error}
+        </motion.div>
       )}
 
-    </div>
+      {/* ── Tab Content ── */}
+      <AnimatePresence mode="wait">
+        {tab === 'monthly' && (
+          <motion.div key="monthly" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <div className="section-hdr">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <CalendarDays size={14} strokeWidth={1.75} style={{ color: '#00d296' }} />
+                Payroll Overrides
+                <span style={{ fontSize: '0.68rem', color: '#4d5672', fontWeight: 500 }}>100% Dynamic</span>
+              </span>
+              <select
+                className="month-picker"
+                value={monthStr}
+                onChange={(e) => setMonthStr(e.target.value)}
+              >
+                <option value="">All Months</option>
+                {["January","February","March","April","May","June","July","August","September","October","November","December"].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <DynamicExcelTable
+                tableName="payroll_overrides"
+                tableData={(data.overrides || []).filter(o => !monthStr || o.month === monthStr || o.month?.startsWith('TBD_')).map(row => {
+                  const targetMonth = row?.month?.toLowerCase();
+                  const targetYear = (row?.year || row?.Year)?.toString();
+                  const myAtt = (data.attendance || []).filter(a => a.employee_id === row?.employee_id || a.employee_id === row?.name);
+                  let pTotal = 0; let aTotal = 0;
+                  myAtt.forEach(a => {
+                    const d = new Date(a.date || new Date());
+                    const mName = a.month ? a.month.toLowerCase() : d.toLocaleString('default', { month: 'long' }).toLowerCase();
+                    const yName = (a.year || a.Year || d.getFullYear()).toString();
+                    if ((!targetMonth || mName === targetMonth) && (!targetYear || yName === targetYear)) {
+                      if (parseInt(a.Present) === 1 || a.status?.toLowerCase() === 'present') pTotal++;
+                      if (parseInt(a.Absent) === 1 || a.status?.toLowerCase() === 'absent') aTotal++;
+                    }
+                  });
+                  return {
+                    ...row,
+                    Present: (row.Present !== undefined && row.Present !== null && row.Present !== '') ? row.Present : pTotal,
+                    Absent:  (row.Absent  !== undefined && row.Absent  !== null && row.Absent  !== '') ? row.Absent  : aTotal,
+                  };
+                })}
+                reloadData={loadData}
+                EditableCell={EditableCell}
+                isAdmin={data.is_admin}
+              />
+            </div>
+            <div style={{ fontSize: '0.7rem', color: '#4d5672', marginTop: '8px' }}>
+              * Direct manipulation of payroll_overrides via Dynamic Excel Grid.
+            </div>
+          </motion.div>
+        )}
+
+        {tab === 'dashboard' && (
+          <motion.div key="dashboard" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <motion.div variants={containerVariants} initial="hidden" animate="visible" className="stat-grid">
+              {[
+                { val: (data.employees||[]).length, lbl: 'Total Employees', color: '#f0f4ff', icon: Users },
+                { val: (data.attendance||[]).length, lbl: 'Attendance Records', color: '#00d296', icon: ClipboardList },
+                {
+                  val: brokenChains.size,
+                  lbl: 'Flagged Tampering',
+                  color: '#f85149',
+                  icon: Shield,
+                  sub: culprits.size > 0 ? `By: ${Array.from(culprits).join(', ')}` : null
+                },
+              ].map(({ val, lbl, color, icon: Icon, sub }, i) => (
+                <motion.div key={i} variants={itemVariants} className="stat">
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="stat-val" style={{ color }}>{val}{sub && <span style={{ fontSize: '11px', marginLeft: '6px', color: '#4d5672', fontWeight: 500 }}>{sub}</span>}</div>
+                      <div className="stat-lbl">{lbl}</div>
+                    </div>
+                    <Icon size={18} strokeWidth={1.5} style={{ color, opacity: 0.5 }} />
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+            <div className="section-hdr">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <Users size={14} strokeWidth={1.75} style={{ color: '#00d296' }} />
+                Employees Database
+                <span style={{ fontSize: '0.68rem', color: '#4d5672', fontWeight: 500 }}>100% Dynamic</span>
+              </span>
+            </div>
+            <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <DynamicExcelTable tableName="employees" tableData={data.employees} reloadData={loadData} EditableCell={EditableCell} isAdmin={data.is_admin} />
+            </div>
+          </motion.div>
+        )}
+
+        {tab === 'attendance' && (
+          <motion.div key="attendance" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <div className="section-hdr">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <ClipboardList size={14} strokeWidth={1.75} style={{ color: '#00d296' }} />
+                Daily Attendance Register
+                <span style={{ fontSize: '0.68rem', color: '#4d5672', fontWeight: 500 }}>100% Dynamic</span>
+              </span>
+              {!data.is_admin && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className="clock-in-btn"
+                    onClick={async () => {
+                      try {
+                        await api.clockIn('Present');
+                        alert('✅ Shift Started! Your row was securely generated.');
+                        loadData();
+                      } catch(err) {
+                        alert('Action Rejected: ' + (err.detail || err.message || 'You may have already clocked in today.'));
+                      }
+                    }}
+                  >
+                    <LogIn size={14} strokeWidth={2} />
+                    Clock In Now
+                  </button>
+                  <button
+                    className="clock-out-btn"
+                    onClick={async () => {
+                      const todayStr = new Date().toLocaleDateString('en-CA');
+                      const activeRow = (data.attendance || []).find(r => r.date === todayStr || (r.date && r.date.startsWith(todayStr)));
+                      if (!activeRow) { alert('⚠️ You must Clock In first before you can Clock Out!'); return; }
+                      if (activeRow.clock_out && activeRow.clock_out !== '...' && activeRow.clock_out.trim() !== '') {
+                        alert('✅ You have already clocked out today!'); return;
+                      }
+                      try {
+                        await api.clockOut(activeRow.id);
+                        alert('✅ Shift Ended! Clock-out time securely logged.');
+                        loadData();
+                      } catch(err) {
+                        alert('Action Rejected: ' + (err.detail || err.message));
+                      }
+                    }}
+                  >
+                    <LogOut size={14} strokeWidth={2} />
+                    Clock Out Now
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <DynamicExcelTable tableName="attendance" tableData={data.attendance} reloadData={loadData} EditableCell={EditableCell} isAdmin={data.is_admin} />
+            </div>
+          </motion.div>
+        )}
+
+        {tab === 'leaves' && (
+          <motion.div key="leaves" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <div className="section-hdr">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <CalendarDays size={14} strokeWidth={1.75} style={{ color: '#00d296' }} />
+                Leave Requests
+                <span style={{ fontSize: '0.68rem', color: '#4d5672', fontWeight: 500 }}>100% Dynamic</span>
+              </span>
+            </div>
+            {!data.is_admin && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 100 }}
+                className="hr-card"
+                style={{ marginBottom: '14px' }}
+              >
+                <h4 style={{ margin: '0 0 14px 0', color: '#38bdf8', fontSize: '0.875rem', fontWeight: 600, letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <CalendarDays size={15} strokeWidth={1.75} /> Request Time Off
+                </h4>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    try {
+                      await api.requestLeave({
+                        from_date:  fd.get('from_date'),
+                        to_date:    fd.get('to_date'),
+                        leave_type: fd.get('leave_type'),
+                        reason:     fd.get('reason')
+                      });
+                      alert('✅ Leave request submitted securely!');
+                      e.target.reset();
+                      loadData();
+                    } catch(err) {
+                      alert('Action Rejected: ' + (err.detail || err.message));
+                    }
+                  }}
+                  style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={labelStyle}>From Date</label>
+                    <input id="from_date" name="from_date" type="date" required style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={labelStyle}>To Date</label>
+                    <input id="to_date" name="to_date" type="date" required style={inputStyle} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={labelStyle}>Type</label>
+                    <select name="leave_type" required style={inputStyle}>
+                      <option value="casual">Casual Leave</option>
+                      <option value="sick">Sick Leave</option>
+                      <option value="unpaid">Unpaid Leave</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: '200px' }}>
+                    <label style={labelStyle}>Reason</label>
+                    <input id="reason" name="reason" type="text" placeholder="Brief reason..." required style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+                  <button
+                    type="submit"
+                    style={{
+                      background: 'linear-gradient(135deg, #6366f1, #7c3aed)',
+                      color: '#fff', border: 'none', padding: '8px 18px',
+                      borderRadius: '7px', fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'inherit', fontSize: '0.8rem', letterSpacing: '0.01em',
+                      boxShadow: '0 2px 12px rgba(99,102,241,0.3)',
+                      transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.02) translateY(-1px)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(99,102,241,0.4), 0 4px 16px rgba(0,0,0,0.3)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(99,102,241,0.3)'; }}
+                  >
+                    <Send size={13} strokeWidth={2} /> Submit Request
+                  </button>
+                </form>
+              </motion.div>
+            )}
+            <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <DynamicExcelTable tableName="leave_requests" tableData={data.leave_requests} reloadData={loadData} EditableCell={EditableCell} isAdmin={data.is_admin} />
+            </div>
+          </motion.div>
+        )}
+
+        {tab === 'auditlog' && (
+          <motion.div key="auditlog" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <div className="section-hdr">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <Lock size={14} strokeWidth={1.75} style={{ color: '#00d296' }} />
+                Tamper-proof Audit Log
+                <span style={{ fontSize: '0.68rem', color: '#4d5672', fontWeight: 500 }}>100% Dynamic</span>
+              </span>
+            </div>
+            <div className="hr-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <DynamicExcelTable tableName="attendance_audit" tableData={data.audit_logs} reloadData={loadData} EditableCell={EditableCell} isAdmin={data.is_admin} />
+            </div>
+          </motion.div>
+        )}
+
+        {tab === 'messages' && (
+          <motion.div key="messages" variants={tabContentVariants} initial="hidden" animate="visible" exit="exit">
+            <div style={{ display: 'grid', gridTemplateColumns: '210px 1fr', gap: '12px' }}>
+              {/* Employee list */}
+              <div style={{ background: 'rgba(10,13,26,0.5)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px', backdropFilter: 'blur(12px)' }}>
+                <div style={{ fontSize: '0.68rem', color: '#4d5672', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Users size={11} strokeWidth={2} /> Employees
+                </div>
+                {(data.employees || []).map((e, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setConvIdx(i)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                      background: convIdx === i ? 'rgba(0,210,150,0.08)' : 'transparent',
+                      border: convIdx === i ? '1px solid rgba(0,210,150,0.15)' : '1px solid transparent',
+                      transition: 'all 0.2s', marginBottom: '2px',
+                    }}
+                    onMouseEnter={e => { if (convIdx !== i) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                    onMouseLeave={e => { if (convIdx !== i) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <div className={`av ${getAv(i)}`} style={{ flexShrink: 0 }}>{e.name.substring(0, 2).toUpperCase()}</div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 500, color: convIdx === i ? '#f0f4ff' : '#8892b0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Chat panel */}
+              <div className="hr-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '340px' }}>
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div className={`av ${getAv(convIdx)}`} style={{ width: '24px', height: '24px', fontSize: '0.6rem' }}>
+                    {data.employees[convIdx]?.name?.substring(0, 2).toUpperCase()}
+                  </div>
+                  {data.employees[convIdx]?.name}
+                </div>
+                <div className="msg-wrap">
+                  {(data.messages || []).filter(m => m.sender_id === data.employees[convIdx]?.id || m.receiver_id === data.employees[convIdx]?.id).map((m, i) => (
+                    <div key={i} className={`msg ${m.sender_id === data.employees[convIdx]?.id ? 'msg-in' : 'msg-out'}`}>
+                      {m.body}
+                      <div className="msg-meta">{new Date(m.sent_at).toLocaleTimeString()}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
+                  <input
+                    id="msgInput"
+                    type="text"
+                    name="msgInput"
+                    value={msgInput}
+                    onChange={e => setMsgInput(e.target.value)}
+                    placeholder="Type a message…"
+                    style={{
+                      flex: 1, fontSize: '0.8rem', padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                      color: '#f0f4ff', borderRadius: '7px', outline: 'none', fontFamily: 'inherit',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={e => e.target.style.borderColor = '#00d296'}
+                    onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
+                    onKeyDown={e => e.key === 'Enter' && sendMsg()}
+                  />
+                  <button
+                    className="edit-btn"
+                    onClick={sendMsg}
+                    style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                  >
+                    <Send size={12} strokeWidth={2} /> Send
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#3d4463', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Lock size={10} strokeWidth={2} /> Messages are Fernet-encrypted in DB.
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+    </motion.div>
   )
 }
