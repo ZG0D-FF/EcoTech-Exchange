@@ -108,9 +108,48 @@ export const api = {
       body: JSON.stringify({ table, id, column, value })
     }).then(r => r.json()),
 	
-    addDynamicColumn: (table, column) => fetch(`${BASE_URL}/hr/dynamic/column`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ table, column }) }).then(r => r.json()),
-    deleteDynamicColumn: (table, column) => fetch(`${BASE_URL}/hr/dynamic/column`, { method: 'DELETE', headers: getHeaders(), body: JSON.stringify({ table, column }) }).then(r => r.json()),
-    addDynamicRow: (table) => fetch(`${BASE_URL}/hr/dynamic/row`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ table }) }).then(r => r.json()),
-    deleteDynamicRow: (table, row_id) => fetch(`${BASE_URL}/hr/dynamic/row/${table}/${row_id}`, { method: 'DELETE', headers: getHeaders() }).then(r => r.json()),
+  requestLeave: (data) =>
+    fetch(`${BASE_URL}/hr/leaves/request`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    }).then(async r => {
+      const res = await r.json();
+      if (!r.ok) throw res;
+      return res;
+    }),
+
+  addDynamicColumn: (table, column, password) => 
+    fetch(`${BASE_URL}/hr/dynamic/column`, { 
+      method: 'POST', 
+      headers: getHeaders(), 
+      body: JSON.stringify({ table, column, password }) 
+    }).then(r => r.json()),
+    
+  deleteDynamicColumn: (table, column, password) => 
+    fetch(`${BASE_URL}/hr/dynamic/column`, { 
+      method: 'DELETE', 
+      headers: getHeaders(), 
+      body: JSON.stringify({ table, column, password }) 
+    }).then(r => r.json()),
+    
+  addDynamicRow: (table) => 
+    fetch(`${BASE_URL}/hr/dynamic/row`, { 
+      method: 'POST', 
+      headers: getHeaders(), 
+      body: JSON.stringify({ table }) 
+    }).then(r => r.json()),
+    
+  deleteDynamicRow: (table, row_id) => 
+    fetch(`${BASE_URL}/hr/dynamic/row/${table}/${row_id}`, { 
+      method: 'DELETE', 
+      headers: getHeaders() 
+    }).then(r => r.json()),
+    
+  restoreDynamicRow: (table, row_id) => 
+    fetch(`${BASE_URL}/hr/dynamic/row/restore/${table}/${row_id}`, { 
+      method: 'PUT', 
+      headers: getHeaders() 
+    }).then(r => r.json()),
 }
 
