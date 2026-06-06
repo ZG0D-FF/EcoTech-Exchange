@@ -808,6 +808,10 @@ export default function Attendance() {
 
   const handleClearCache = async () => {
     try {
+      // 1. Clear Browser Memory Cache
+      sessionStorage.removeItem('hr_dashboard_cache');
+      
+      // 2. Clear Backend Redis/SQLite Cache
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/cache/clear`, {
         method: 'POST',
         headers: { 
@@ -816,6 +820,9 @@ export default function Attendance() {
         }
       });
       const resData = await res.json();
+      
+      // 3. Hard Reload Data
+      await loadData();
       alert(resData.message || resData.detail);
     } catch (e) {
       alert("Failed to clear cache.");
