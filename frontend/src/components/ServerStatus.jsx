@@ -13,23 +13,41 @@ export default function ServerStatus() {
     
     const checkPulse = async () => {
       try {
-        const res = await fetch(`${BASE_URL}/hr/health`, { cache: 'no-store' });
-        if (res.ok) {
-          if (status === 'offline') {
-            setStatus('recovering');
-            setShowRecovered(true);
-            setTimeout(() => {
-              setShowRecovered(false);
-              setStatus('online');
-            }, 4000);
-          } else {
-            setStatus('online');
-          }
-        } else {
-          setStatus('offline');
+        // 1. Query the Vercel Watchdog (Bypass PWA cache)
+        let res = await fetch(`/api/status?t=${Date.now()}`, { cache: 'no-store' });
+        
+        // Local Dev Fallback: If Vercel API is 404, fallback to pinging the Python backend directly
+        if (res.status === 404) {
+           res = await fetch(`${BASE_URL}/hr/health?t=${Date.now()}`, { cache: 'no-store' });
+           if (!res.ok) throw new Error("Backend offline");
+           handleOnlineTransition();
+           return;
         }
+
+        const data = await res.json();
+        
+        // 2. Process the unified state
+        if (data.status === 'building' || data.status === 'offline') {
+           setStatus('offline');
+        } else {
+           handleOnlineTransition();
+        }
+
       } catch (err) {
         setStatus('offline');
+      }
+    };
+
+    const handleOnlineTransition = () => {
+      if (status === 'offline') {
+        setStatus('recovering');
+        setShowRecovered(true);
+        setTimeout(() => {
+          setShowRecovered(false);
+          setStatus('online');
+        }, 4000);
+      } else {
+        setStatus('online');
       }
     };
 
